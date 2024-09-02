@@ -6,7 +6,7 @@
 The architecture will consist of 16 registers while 8 are addressable at a time. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it, this switch will be made through SRB operation.
 Characteristics:
 - Two addresses architecture.
-- 16 registers: split in sets of 4, the instruction field in SRB will determine wich set is to be used.
+- 16 registers: split in sets of 4, the instruction field in SRB will determine which set is to be used.
 - SRB will match the register bank accordingly:
 	- 00: Will use the default register bank, r7-r4 and r3-r0.
 	- 01: Will swap the lower register bank,  r7-r4 and r11-r8.
@@ -14,9 +14,9 @@ Characteristics:
 	- 11: Will swap both registers banks, r15-r12 and r11-r8.
 - 4 Operations Mode:
 	- 00: Management - r11-r4 will hold the CPU configuration.
-	- 01: 8 bit mode - the CPU will use only the 8 less significant bit from its register to do operations.
-	- 10: 16 bit mode - the CPU will use the full register size and manipulate data in 16 bit.
-	- 11: Unsuported - reserved for custom operations, the CPU will reset if selected and not supported.
+	- 01: 8 bit Low mode - the CPU will use only the 8 less significant bits from its register to do operations.
+	- 10: 8 bit High mode - the CPU will use only the 8 most significant bits from its register to do operations.
+	- 11: 16 bit mode - the CPU will use the full register size and manipulate data in 16 bit.
 - Management:
 	- r15: Supervisor Address higher bits.
 	- r14: Supervisor Address lower bits.
@@ -30,13 +30,39 @@ Characteristics:
 	- r5: Interruption Address higher bits.
 	- r4: Interruption Address lower bits.
 	- r3: Sleep time (cycles).
-	> Management is under review and is subject to huge changes.
+	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen from r15 through r9.
+- CPU Mode - It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:
+	- Interruption: (default 1)
+		- 1: CPU will jump to interruption Address as soon as it receives an interrupt signal.
+		- 0: CPU will ignore interruption signal.
+	- Signaled: (default 1)
+		- 1: CPU will execute ADD/SUB considering signals.
+		- 0: CPU  will execute ADD/SUB as unassigned operations.
+	- Rotation: (default 0)
+		- 1: CPU will execute shift operations (SL/SR) with rotation of its bits.
+		- 0: CPU will execute shift operations (SL/SR) without rotation of its bits, filling with 0.
+	- Sequential Memory: (default 0)
+		- 1: CPU will update memory address after a memory operation (Read/Write) with +1.
+		- 0: CPU will not update memory address after a memory operation (Read/Write).
+	- Vector: (default 0)
+		- 1: CPU will enter in vector mode.
+		- 0: CPU will operate normally.
+- Vector Mode:
+	- Will replace the upper 4 registers with vector registers (size to be informed in CPUID)
+	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the upper register file (r7-r4 or r15-r12) while 'VV' will be the vector register file which ranges from v3 through v0.
+	- RRR ---> RV F: Where 'F' will define if operation is on register file (0) or on the vector registers (1), 'RV' will hold the address of register that the operation must be over.
+	- Limitations:
+		- AND, OR and XOR will only work over vector registers.
+		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming address available to vector operations.
+		> Branch (BEQz/BGEz) is under review as a valid operation over vector register file.
 - Immediate: Value read from instruction memory.
 - RRR F: 
 	- RRR: holds the operand register address, all changes will be applied to it.
 	- F = 0: This will make the operator have the most significant bit of its address been the inverse the operand
 	- F = 1: This will make the operator be the register before the operand (operand_addr -1)
 	- If the instruction does not have a function bit 'F', it will operate solely on operand or assume F=0.
+- Sleep will start as soon as a value is written on the 'Sleep' register.
+- RST: Can be used as an escape command to run the CPU in a new architecture.
 
 ## Instructions
 The following table lists the architecture current instructions.
@@ -67,8 +93,8 @@ The following table lists the architecture current instructions.
 |II1 1 0000|OPM         |Operation Mode                    |
 |001 0 0000|CSM         |Control Sequential Memory         |
 |011 0 0000|CI          |Control Interruption              |
-|101 0 0000|CA          |Control Array                     |
-|111 0 0000|SLP         |Sleep                             |
+|101 0 0000|CV          |Control Vector                    |
+|111 0 0000|RST         |Reset                             |
 |010 0 0000|BKP         |Backup Registers to memory        |
 |110 0 0000|BKPR        |Restore Backup from memory        |
 |100 0 0000|CWDT        |Clear Watchdog Time               |
@@ -76,9 +102,8 @@ The following table lists the architecture current instructions.
 ### Development: Current missing
 Currently there is a feeling of missing some functionalities, like:
 - Reading (branch) and writing a single bit of a register (flag).
-- Vector operations (even without multiply).
 - Flags: Can be used to read the processor current operation mode without going to management mode.
-- JAL: Jump and Link could be not destructive, in this case would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
+- JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
 
 There are also some operations that have some high overhead due to the architecture:
 
@@ -87,6 +112,8 @@ There are also some operations that have some high overhead due to the architect
 ### Design: Characteristics
 There are some design behavior mandate by the isa that every implementation must follow:
 - Immediate: Currently only used on LWI, Immediate is obtained by reading the following bits from instruction as immediate instead of executing it as instruction.
+
+
 
 ### Honorable Mentions
 There are some instructions that was once in the isa, but currently were removed due to conflict/priority compared to the current design, but there are also others that are just waiting to be in:
