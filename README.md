@@ -1,5 +1,5 @@
 # MISA-I
-**My ISA version 1** is a 8-bit MISC (stretching its meaning) compatible ISA (in the end, the implementation is what matters) made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502). The goal is to see how much could be improved upon the aged ISA's if they were designed with a modern concept in mind.
+**My ISA version 1** is a 8-bit MISC (stretching really hard its meaning) ISA made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502). The goal is to see how much could be improved upon the aged ISA's if they were designed with a modern concept in mind.
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
@@ -44,6 +44,12 @@ Characteristics:
 	- Sequential Memory: (default 0)
 		- 1: CPU will update memory address after a memory operation (Read/Write) with +1.
 		- 0: CPU will not update memory address after a memory operation (Read/Write).
+	- Write-Through: (default 1)
+		- 1: If CPU has a cache, it will always write changes to memory.
+		- 0: If CPU has a cache, it will only write changes to memory on cache line retirement.
+	- FENCE: (default 0)
+		- 1: CPU will only invalidates instruction cache, efectively working as FENCE.I.
+		- 0: FENCE instruction will invalidate instruction cache and retires data cache when called.
 	- Vector: (default 0)
 		- 1: CPU will enter in vector mode.
 		- 0: CPU will operate normally.
@@ -67,76 +73,78 @@ Characteristics:
 ## Instructions
 The following table lists the architecture current instructions.
 
-|Binary    |Instruction |Description                       |
-|----------|------------|----------------------------------|
-|000 0 0000|NOP         |                                  |
-|RRR F 0001|CP          |Copy                              |
-|RRR F 1001|AND         |                                  |
-|RRR F 0101|OR          |                                  |
-|RRR F 1101|XOR         |                                  |
-|RRR F 0011|SL          |Shift Left                        |
-|RRR F 1011|SR          |Shift Right                       |
-|RRR F 0111|BEQz        |Branch Equal Zero                 |
-|RRR F 1111|BGEz        |Branch Greater Equal Zero         |
-|RRR F 0010|ADD         |                                  |
-|RRR F 1010|SUB         |                                  |
-|RRR 1 0110|INC         |Increment                         |
-|RRR 0 0110|CLR         |Clear                             |
-|RRR 1 1110|DEC         |Decrement                         |
-|RRR 0 1110|LI          |Load Immediate from instruction   |
-|RRR 0 0100|LW          |Load Word                         |
-|RRR 1 0100|SW          |Store Word                        |
-|RRR F 1100|SMEM        |Swap Memory Address               |
-|RRR 0 1000|APC         |Add to Program Counter            |
-|RRR 1 1000|JAL         |Jump and Link                     |
-|II0 1 0000|SRB         |Swap Register Bank                |
-|II1 1 0000|OPM         |Operation Mode                    |
-|001 0 0000|CSM         |Control Sequential Memory         |
-|011 0 0000|CI          |Control Interruption              |
-|101 0 0000|CV          |Control Vector                    |
-|111 0 0000|RST         |Reset                             |
-|010 0 0000|BKP         |Backup Registers to memory        |
-|110 0 0000|BKPR        |Restore Backup from memory        |
-|100 0 0000|CWDT        |Clear Watchdog Time               |
+|Binary    |Instruction |Description                             |
+|----------|------------|----------------------------------------|
+|000 0 0000|NOP         |                                        |
+|RRR F 0001|CP          |Copy                                    |
+|RRR F 1001|AND         |                                        |
+|RRR F 0101|OR          |                                        |
+|RRR F 1101|XOR         |                                        |
+|RRR F 0011|SL          |Shift Left                              |
+|RRR F 1011|SR          |Shift Right                             |
+|RRR F 0111|BEQz        |Branch Equal Zero                       |
+|RRR F 1111|BGEz        |Branch Greater Equal Zero               |
+|RRR F 0010|ADD         |                                        |
+|RRR F 1010|SUB         |                                        |
+|RRR 1 0110|INC         |Increment                               |
+|RRR 0 0110|CLR         |Clear                                   |
+|RRR 1 1110|DEC         |Decrement                               |
+|RRR 0 1110|LI          |Load Immediate from instruction         |
+|RRR 0 0100|LW          |Load Word                               |
+|RRR 1 0100|SW          |Store Word                              |
+|RRR F 1100|SMEM        |Swap Memory Address                     |
+|RRR 0 1000|APC         |Add to Program Counter                  |
+|RRR 1 1000|JAL         |Jump and Link                           |
+|II0 1 0000|SRB         |Swap Register Bank                      |
+|II1 1 0000|OPM         |Operation Mode                          |
+|001 0 0000|CSM         |Control Sequential Memory               |
+|011 0 0000|CI          |Control Interruption                    |
+|101 0 0000|CV          |Control Vector                          |
+|111 0 0000|FENCE       |Invalidates i.cache and retires d.cache |
+|010 0 0000|BKP         |Backup Registers to memory              |
+|110 0 0000|BKPR        |Restore Backup from memory              |
+|111 0 0000|RST         |Reset                                   |
 
 ### Development: Current missing
 Currently there is a feeling of missing some functionalities, like:
-- Reading (branch) and writing a single bit of a register (flag).
+- Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, its currently in the high priority list to be added.
+- BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: Can be used to read the processor current operation mode without going to management mode.
 - JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
+- TSO (Total Store Order): As an 8-bit CPU, a cache can be a huge obstacle, so if a small cache is desired, sync could be done with a write through mode and a FENCE instruction.
+- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used as such), it could be added by replacing SMEM H (when F=1), this would also liberate more space for instructions.
 
 There are also some operations that have some high overhead due to the architecture:
 
 - Branch between values may require a SUB or ADD operation before comparison, due to the destructive nature of the architecture, if the original value of comparison cannot be lost there will be an operation overhead to copy the main value to an available register before the Branch, if there is no available register at the moment... Well... glhf...
 
-### Design: Characteristics
-There are some design behavior mandate by the isa that every implementation must follow:
-- Immediate: Currently only used on LWI, Immediate is obtained by reading the following bits from instruction as immediate instead of executing it as instruction.
-
-
 
 ### Honorable Mentions
 There are some instructions that was once in the isa, but currently were removed due to conflict/priority compared to the current design, but there are also others that are just waiting to be in:
 
-|Binary    |Instruction |Description                       |Candidate|
-|----------|------------|----------------------------------|---------|
-|RRR 0 1110|FILL        |Fill register with 1              |         |
-|RRR 0 1110|SWPF        |Swap Flags                        |         |
-|III I IIII|RST         |Reset                             |Yes      |
-|III I IIII|SLPI        |Sleep until Interrupt             |         |
-|RRR I IIII|BC          |Branch if carry                   |         |
-|RRR R IIII|BITW        |Write Bit                         |         |
-|III I IIII|BITT        |Test Bit                          |         |
-|III I IIII|MKA         |Make Array                        |Yes      |
-|III I IIII|RPC         |Read PC                           |         |
-|III I IIII|RI          |Read Interruption                 |         |
-|RRR I IIII|RNG         |Generate Random Value             |         |
-|III I IIII|CR          |Control Rotation                  |Yes      |
-|III I IIII|CS          |Control Signaled                  |Yes      |
-|III I IIII|CIO         |Control Interruption on Overflow  |Yes      |
-|III I IIII|CC          |Control Carry                     |Yes      |
-|III I IIII|MP          |Make Process                      |         |
-|III I IIII|RPR         |Reserve Private Memory            |         |
-|III I IIII|RPU         |Reserve Public Memory             |         |
-|III I IIII|EADD        |Exception Address                 |         |
-|III I IIII|CPUID       |Read CPU capabilities             |Yes      |
+|Binary    |Instruction |Description                             |Candidate|
+|----------|------------|----------------------------------------|---------|
+|III I IIII|SI          |Send Interrupt                          |Yes      |
+|111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
+|110 0 0000|FENCE       |Invalidates I.cache and retires D.cache |Yes      |
+|110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
+|110 0 0000|FENCE.D     |Retires data cache                      |         |
+|RRR 0 1110|FILL        |Fill register with 1                    |         |
+|RRR 0 1110|SWPF        |Swap Flags                              |         |
+|III I IIII|SLPI        |Sleep until Interrupt                   |         |
+|RRR I IIII|BC          |Branch if carry                         |         |
+|RRR R IIII|BITW        |Write Bit                               |         |
+|III I IIII|BITT        |Test Bit                                |         |
+|III I IIII|MKV         |Make Vector                             |Yes      |
+|III I IIII|RPC         |Read PC                                 |         |
+|III I IIII|RI          |Read Interruption                       |         |
+|RRR I IIII|RNG         |Generate Random Value                   |         |
+|III I IIII|CR          |Control Rotation                        |Yes      |
+|III I IIII|CS          |Control Signaled                        |Yes      |
+|III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
+|III I IIII|CC          |Control Carry                           |Yes      |
+|III I IIII|MP          |Make Process                            |         |
+|III I IIII|RPR         |Reserve Private Memory                  |         |
+|III I IIII|RPU         |Reserve Public Memory                   |         |
+|III I IIII|EADD        |Exception Address                       |         |
+|III I IIII|CPUID       |Read CPU capabilities                   |Yes      |
