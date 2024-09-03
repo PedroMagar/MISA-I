@@ -41,6 +41,9 @@ Characteristics:
 	- Rotation: (default 0)
 		- 1: CPU will execute shift operations (SL/SR) with rotation of its bits.
 		- 0: CPU will execute shift operations (SL/SR) without rotation of its bits, filling with 0.
+	- Carry: (default 1)
+		- 1: CPU will include the Carry bit of the last ADD/SUB operation in a multi ADD/SUB sequence.
+		- 0: CPU will not include the Carry bit in any ADD/SUB operation.
 	- Sequential Memory: (default 0)
 		- 1: CPU will update memory address after a memory operation (Read/Write) with +1.
 		- 0: CPU will not update memory address after a memory operation (Read/Write).
@@ -98,9 +101,9 @@ The following table lists the architecture current instructions.
 |II0 1 0000|SRB         |Swap Register Bank                      |
 |II1 1 0000|OPM         |Operation Mode                          |
 |001 0 0000|CSM         |Control Sequential Memory               |
-|011 0 0000|CI          |Control Interruption                    |
+|011 0 0000|CS          |Control Signaled                        |
 |101 0 0000|CV          |Control Vector                          |
-|111 0 0000|FENCE       |Invalidates i.cache and retires d.cache |
+|111 0 0000|FENCE       |Invalidates I.cache and retires D.cache |
 |010 0 0000|BKP         |Backup Registers to memory              |
 |110 0 0000|BKPR        |Restore Backup from memory              |
 |111 0 0000|RST         |Reset                                   |
@@ -111,13 +114,12 @@ Currently there is a feeling of missing some functionalities, like:
 - BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: Can be used to read the processor current operation mode without going to management mode.
 - JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
-- TSO (Total Store Order): As an 8-bit CPU, a cache can be a huge obstacle, so if a small cache is desired, sync could be done with a write through mode and a FENCE instruction.
-- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used as such), it could be added by replacing SMEM H (when F=1), this would also liberate more space for instructions.
+- TSO (Total Store Order): As an 8-bit CPU, a cache can be a huge burden, so if a small cache is desired, sync could be done setting the CPU in write through mode and using FENCE instruction in sensible areas.
+- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used similarly), it could be added by replacing SMEM H (when F=1), this would also liberate some space for more instructions.
 
 There are also some operations that have some high overhead due to the architecture:
-
 - Branch between values may require a SUB or ADD operation before comparison, due to the destructive nature of the architecture, if the original value of comparison cannot be lost there will be an operation overhead to copy the main value to an available register before the Branch, if there is no available register at the moment... Well... glhf...
-
+- Rotation, Carry and Interruption can not be changed directly like others control instructions (CSM, CS and CV), for changing this behaviour will be necessary to enter management mode (OPM 0) and then updating 'CPU Mode' register with the desired value/behavior.
 
 ### Honorable Mentions
 There are some instructions that was once in the isa, but currently were removed due to conflict/priority compared to the current design, but there are also others that are just waiting to be in:
@@ -140,9 +142,9 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|RI          |Read Interruption                       |         |
 |RRR I IIII|RNG         |Generate Random Value                   |         |
 |III I IIII|CR          |Control Rotation                        |Yes      |
-|III I IIII|CS          |Control Signaled                        |Yes      |
-|III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
 |III I IIII|CC          |Control Carry                           |Yes      |
+|011 0 0000|CI          |Control Interruption                    |Yes      |
+|III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
 |III I IIII|MP          |Make Process                            |         |
 |III I IIII|RPR         |Reserve Private Memory                  |         |
 |III I IIII|RPU         |Reserve Public Memory                   |         |
