@@ -6,6 +6,7 @@
 The architecture will consist of 16 registers while 8 are addressable at a time. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it, this switch will be made through SRB operation.
 Characteristics:
 - Two addresses architecture.
+- One register for the path (address register).
 - 16 registers: split in sets of 4, the instruction field in SRB will determine which set is to be used.
 - SRB will match the register bank accordingly:
 	- 00: Will use the default register bank, r7-r4 and r3-r0.
@@ -48,11 +49,11 @@ Characteristics:
 		- 1: CPU will update memory address after a memory operation (Read/Write) with +1.
 		- 0: CPU will not update memory address after a memory operation (Read/Write).
 	- Write-Through: (default 1)
-		- 1: If CPU has a cache, it will always write changes to memory.
-		- 0: If CPU has a cache, it will only write changes to memory on cache line retirement.
+		- 1: If the CPU has a cache, it will always write changes to memory.
+		- 0: If the CPU has a cache, it will only write changes to memory on cache line retirement.
 	- FENCE: (default 0)
-		- 1: CPU will only invalidates instruction cache, efectively working as FENCE.I.
-		- 0: FENCE instruction will invalidate instruction cache and retires data cache when called.
+		- 1: CPU will only invalidates instruction cache, effectively working as FENCE.I.
+		- 0: FENCE instruction will invalidate instruction cache and retire data cache when called.
 	- Vector: (default 0)
 		- 1: CPU will enter in vector mode.
 		- 0: CPU will operate normally.
@@ -62,7 +63,7 @@ Characteristics:
 	- RRR ---> RV F: Where 'F' will define if operation is on register file (0) or on the vector registers (1), 'RV' will hold the address of register that the operation must be over.
 	- Limitations:
 		- AND, OR and XOR will only work over vector registers.
-		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming address available to vector operations.
+		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
 		> Branch (BEQz/BGEz) is under review as a valid operation over vector register file.
 - Immediate: Value read from instruction memory.
 - RRR F: 
@@ -95,9 +96,10 @@ The following table lists the architecture current instructions.
 |RRR 0 1110|LI          |Load Immediate from instruction         |
 |RRR 0 0100|LW          |Load Word                               |
 |RRR 1 0100|SW          |Store Word                              |
-|RRR F 1100|SMEM        |Swap Memory Address                     |
-|RRR 0 1000|APC         |Add to Program Counter                  |
-|RRR 1 1000|JAL         |Jump and Link                           |
+|RRR 0 1100|APC         |Add to Program Counter                  |
+|RRR 1 1100|JAL         |Jump and Link                           |
+|RRR 0 1000|            |**TO-DO**                               |
+|RRR 1 1000|SMEM        |Swap Memory Address                     |
 |II0 1 0000|SRB         |Swap Register Bank                      |
 |II1 1 0000|OPM         |Operation Mode                          |
 |001 0 0000|CSM         |Control Sequential Memory               |
@@ -106,20 +108,25 @@ The following table lists the architecture current instructions.
 |111 0 0000|FENCE       |Invalidates I.cache and retires D.cache |
 |010 0 0000|BKP         |Backup Registers to memory              |
 |110 0 0000|BKPR        |Restore Backup from memory              |
-|111 0 0000|RST         |Reset                                   |
+|100 0 0000|RST         |Reset                                   |
 
 ### Development: Current missing
 Currently there is a feeling of missing some functionalities, like:
-- Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, its currently in the high priority list to be added.
+- Become a true MISC architecture: Currently the instruction structure are much more RISC like, and some instructions can even been said to be CISC, changing CPU behavior is something to be debated as if already existing instructions will count as new one, here are the main corrupt:
+	- LI: will read the next instruction (8-bit data mode) or even next two instructions (16-bit data mode) as immediate value to store on register, it's not complex, but can be argued to have a variable length instruction size, even so this instruction is here to stay, cause as 8-bit do not let left much space for an immediate, without it generating an address to read or store a value would became painfully taxing on the runtime.
+	- BKP & BKPR: They are great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process as the last register to be restored would have to contain the PC address of when the execution was exchanged, this would imply to define in a high level a "throw away" register that would only be used with interrupt off.
+	- Protected Memory: MISC abolishes MMU, even so I believe it's important to have a way to protect itself from malicious users. I'm still studying how to do it, for now I'm looking at RA (Relative Address) and FL (Field Length) of CDC Architecture.
+	- SOLUTIONS: BKP/BKP, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way MISA-I can be kept clean and MISC conformant if desired (usability will take priority over philosophy).
+- Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, it's currently in the high priority list to be added.
 - BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: Can be used to read the processor current operation mode without going to management mode.
 - JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
-- TSO (Total Store Order): As an 8-bit CPU, a cache can be a huge burden, so if a small cache is desired, sync could be done setting the CPU in write through mode and using FENCE instruction in sensible areas.
+- Cache and TSO (Total Store Order): Let's start simple, 128 Bytes on a 6T Flip-Flop would result in 6144 Transistors, a MOS 6502 had 3500 Transistors... For an 8-bit CPU, a cache is useless or at least on the best of the best a really really really HUGE burden, BUT, if low transistor count (small size) is not one of the requirements, and a wide input (like 4-way decode) is what you are doing, a small cache can be desired, and when there is a cache, there is a possibility of memory mismatch with other devices on the bus, to prevent this sync could be done setting the CPU in write through mode and using FENCE instruction in sensible areas.
 - Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used similarly), it could be added by replacing SMEM H (when F=1), this would also liberate some space for more instructions.
 
 There are also some operations that have some high overhead due to the architecture:
 - Branch between values may require a SUB or ADD operation before comparison, due to the destructive nature of the architecture, if the original value of comparison cannot be lost there will be an operation overhead to copy the main value to an available register before the Branch, if there is no available register at the moment... Well... glhf...
-- Rotation, Carry and Interruption can not be changed directly like others control instructions (CSM, CS and CV), for changing this behaviour will be necessary to enter management mode (OPM 0) and then updating 'CPU Mode' register with the desired value/behavior.
+- Rotation, Carry and Interruption can not be changed directly like others control instructions (CSM, CS and CV), for changing this behavior will be necessary to enter management mode (OPM 0) and then updating 'CPU Mode' register with the desired value/behavior.
 
 ### Honorable Mentions
 There are some instructions that was once in the isa, but currently were removed due to conflict/priority compared to the current design, but there are also others that are just waiting to be in:
