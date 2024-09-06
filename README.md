@@ -19,20 +19,23 @@ Characteristics:
 	- 10: 8 bit High mode - the CPU will use only the 8 most significant bits from its register to do operations.
 	- 11: 16 bit mode - the CPU will use the full register size and manipulate data in 16 bit.
 - Management:
-	- r15: Supervisor Address higher bits.
-	- r14: Supervisor Address lower bits.
-	- r13: Supervisor Interruption Address higher bits.
-	- r12: Supervisor Interruption Address lower bits.
-	- r11: Reserved Memory Size.
-	- r10: Reserved Memory Address.
-	- r9: Supervisor Interruption timer (cycles).
-	- r7: CPU Info - Current CPU capabilities.
-	- r6: CPU Mode - Will define how the CPU is currently operating.
-	- r5: Interruption Address higher bits.
-	- r4: Interruption Address lower bits.
-	- r3: Sleep time (cycles).
-	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen from r15 through r9.
-- CPU Mode - It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:
+	- r11: Interruption Address.
+	- r10: Interruption timer (cycles).
+	- r9: Relative Address
+	- r8: Field Length.
+	- r7: CPUID - Current CPU capabilities.
+	- r6: NPC - New Core Program Counter
+	- r5: CBA - Callback Address
+	- r4: LOC - Last Operation Carry.
+	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen from r9 through r8.
+ 	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6 or r5.
+- CPUID:
+  
+|Vector |Multiple execution |Flex Memory | Write Police |Protected Memory |Operations (8/16/32-bit) |
+|-------|-------------------|------------|--------------|-----------------|-------------------------|
+|2-bit  |1-bit              |1-bit             |1-bit         |1-bit            |2-bit                    |
+
+- CPU Mode (Currently removed) - It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:
 	- Interruption: (default 1)
 		- 1: CPU will jump to interruption Address as soon as it receives an interrupt signal.
 		- 0: CPU will ignore interruption signal.
@@ -52,26 +55,28 @@ Characteristics:
 		- 1: If the CPU has a cache, it will always write changes to memory.
 		- 0: If the CPU has a cache, it will only write changes to memory on cache line retirement.
 	- FENCE: (default 0)
-		- 1: CPU will only invalidates instruction cache, effectively working as FENCE.I.
+		- 1: CPU will only invalidate instruction cache, effectively working as FENCE.I.
 		- 0: FENCE instruction will invalidate instruction cache and retire data cache when called.
 	- Vector: (default 0)
 		- 1: CPU will enter in vector mode.
 		- 0: CPU will operate normally.
 - Vector Mode:
 	- Will replace the upper 4 registers with vector registers (size to be informed in CPUID)
-	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the upper register file (r7-r4 or r15-r12) while 'VV' will be the vector register file which ranges from v3 through v0.
+	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the upper register files (r7-r4 or r15-r12) while 'VV' will be the vector register file which ranges from v3 through v0.
 	- RRR ---> RV F: Where 'F' will define if operation is on register file (0) or on the vector registers (1), 'RV' will hold the address of register that the operation must be over.
 	- Limitations:
-		- AND, OR and XOR will only work over vector registers.
+		- AND, OR and XOR will only work over the vector registers.
 		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
-		> Branch (BEQz/BGEz) is under review as a valid operation over vector register file.
+		> Branch (BEQz/BGEz) is under review as a valid operation over the vector register file.
 - Immediate: Value read from instruction memory.
 - RRR F: 
 	- RRR: holds the operand register address, all changes will be applied to it.
 	- F = 0: This will make the operator have the most significant bit of its address been the inverse the operand
 	- F = 1: This will make the operator be the register before the operand (operand_addr -1)
 	- If the instruction does not have a function bit 'F', it will operate solely on operand or assume F=0.
-- Sleep will start as soon as a value is written on the 'Sleep' register.
+- Sleep will stop on an interruption signal, this can be achieved by an interruption pin or interruption timer.
+- Flex Memory: A small amount (64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
+- Split Core is a wild concept where the CPU will start operating 2 PC and executing two flows, the idea is if the CPU has Flex Memory, it could execute a sub-program entirely in it's Flex Memory while keeping working on the main program in the primary Thread.
 - RST: Can be used as an escape command to run the CPU in a new architecture.
 
 ## Instructions
@@ -84,8 +89,8 @@ The following table lists the architecture current instructions.
 |RRR F 1001|AND         |                                        |
 |RRR F 0101|OR          |                                        |
 |RRR F 1101|XOR         |                                        |
-|RRR F 0011|SL          |Shift Left                              |
-|RRR F 1011|SR          |Shift Right                             |
+|RRR F 0011|SHL         |Shift Left                              |
+|RRR F 1011|SHR         |Shift Right                             |
 |RRR F 0111|BEQz        |Branch Equal Zero                       |
 |RRR F 1111|BGEz        |Branch Greater Equal Zero               |
 |RRR F 0010|ADD         |                                        |
@@ -98,16 +103,19 @@ The following table lists the architecture current instructions.
 |RRR 1 0100|SW          |Store Word                              |
 |RRR 0 1100|APC         |Add to Program Counter                  |
 |RRR 1 1100|JAL         |Jump and Link                           |
-|RRR 0 1000|            |**TO-DO**                               |
+|FFF 0 1000|OPM         |Operation Mode                          |
 |RRR 1 1000|SMEM        |Swap Memory Address                     |
-|II0 1 0000|SRB         |Swap Register Bank                      |
-|II1 1 0000|OPM         |Operation Mode                          |
-|001 0 0000|CSM         |Control Sequential Memory               |
-|011 0 0000|CS          |Control Signaled                        |
-|101 0 0000|CV          |Control Vector                          |
-|111 0 0000|FENCE       |Invalidates I.cache and retires D.cache |
-|010 0 0000|BKP         |Backup Registers to memory              |
-|110 0 0000|BKPR        |Restore Backup from memory              |
+|FF0 1 0000|SRB         |Swap Register Bank                      |
+|001 1 0000|CSM         |Control Sequential Memory               |
+|011 1 0000|CI          |Control Interruption                    |
+|101 1 0000|CV          |Control Vector                          |
+|111 1 0000|CRS         |Control Rotation and Signal             |
+|001 0 0000|SNDI        |Send Interrupt                          |
+|011 0 0000|FENCE       |Invalidates I.cache and retires D.cache |
+|101 0 0000|SPC         |Split Core                              |
+|111 0 0000|SLP         |Sleep (Kill core)                       |
+|010 0 0000|RER         |Restore all Registers from memory       |
+|110 0 0000|RERO        |Restore Operation Mode Registers        |
 |100 0 0000|RST         |Reset                                   |
 
 ### Development: Current missing
@@ -133,27 +141,21 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|III I IIII|SI          |Send Interrupt                          |Yes      |
 |111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
-|110 0 0000|FENCE       |Invalidates I.cache and retires D.cache |Yes      |
+|RRR 0 0001|ADDC        |ADD Carry                               |Yes      |
+|RRR I IIII|RNG         |Generate Random Value                   |Yes      |
+|III I IIII|MKV         |Make Vector                             |Yes      |
+|110 0 0000|BKPR        |Restore Backup from memory              |         |
+|110 0 0000|FENCE       |Invalidates I.cache and retires D.cache |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
 |110 0 0000|FENCE.D     |Retires data cache                      |         |
 |RRR 0 1110|FILL        |Fill register with 1                    |         |
-|RRR 0 1110|SWPF        |Swap Flags                              |         |
-|III I IIII|SLPI        |Sleep until Interrupt                   |         |
 |RRR I IIII|BC          |Branch if carry                         |         |
 |RRR R IIII|BITW        |Write Bit                               |         |
 |III I IIII|BITT        |Test Bit                                |         |
-|III I IIII|MKV         |Make Vector                             |Yes      |
 |III I IIII|RPC         |Read PC                                 |         |
 |III I IIII|RI          |Read Interruption                       |         |
-|RRR I IIII|RNG         |Generate Random Value                   |         |
-|III I IIII|CR          |Control Rotation                        |Yes      |
+|III I IIII|CR          |Control Rotation                        |         |
 |III I IIII|CC          |Control Carry                           |Yes      |
-|011 0 0000|CI          |Control Interruption                    |Yes      |
 |III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
-|III I IIII|MP          |Make Process                            |         |
-|III I IIII|RPR         |Reserve Private Memory                  |         |
-|III I IIII|RPU         |Reserve Public Memory                   |         |
-|III I IIII|EADD        |Exception Address                       |         |
-|III I IIII|CPUID       |Read CPU capabilities                   |Yes      |
+|III I IIII|CPUID       |Read CPU capabilities                   |         |
