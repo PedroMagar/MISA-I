@@ -22,11 +22,11 @@ Characteristics:
 - Management:
 	- r11: Interruption Address.
 	- r10: Interruption timer (cycles).
-	- r9: Relative Address
+	- r9: Relative Address.
 	- r8: Field Length.
 	- r7: CPUID - Current CPU capabilities.
 	- r6: NPC - New Core Program Counter
-	- r5: CBA - Callback Address
+	- r5: FMA - Flex Memory Address.
 	- r4: LOC - Last Operation Carry.
 	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen from r9 through r8.
  	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6 or r5.
@@ -77,6 +77,7 @@ Characteristics:
 	- If the instruction does not have a function bit 'F', it will operate solely on operand or assume F=0.
 - Sleep will stop on an interruption signal, this can be achieved by an interruption pin or interruption timer.
 - Flex Memory: A small amount (64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
+- FMA: Allows the positioning of the flex memory address, any memory that exceeds the addressable limit can be used as a cache.
 - Split Core is a wild concept where the CPU will start operating 2 PC and executing two flows, the idea is if the CPU has Flex Memory, it could execute a sub-program entirely in it's Flex Memory while keeping working on the main program in the primary Thread.
 - RST: Can be used as an escape command to run the CPU in a new architecture.
 
