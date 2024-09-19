@@ -27,9 +27,10 @@ Characteristics:
 	- r7: CPUID - Current CPU capabilities.
 	- r6: NPC - New Core Program Counter
 	- r5: FMA - Flex Memory Address.
-	- r4: LOC - Last Operation Carry.
+	- r4: INTM - Interruption message.
 	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen from r9 through r8.
  	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6 or r5.
+ 	> With the addition of ADDC instruction, the existence of a register to hold LOC (Last Operation Carry) became unclear, with the necessity to allow application to act to the interruption, it became possible to change r4 to allow more flexibility in the architecture.
 - CPUID:
   
 |Vector |Multiple execution |Flex Memory | Write Police |Protected Memory |Operations (8/16/32-bit) |
@@ -76,10 +77,10 @@ Characteristics:
 	- F = 1: This will make the operator be the register before the operand (operand_addr -1)
 	- If the instruction does not have a function bit 'F', it will operate solely on operand or assume F=0.
 - Sleep will stop on an interruption signal, this can be achieved by an interruption pin or interruption timer.
-- Flex Memory: A small amount (64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
+- Flex Memory: A small amount (planned 64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
 - FMA: Allows the positioning of the flex memory address, any memory that exceeds the addressable limit can be used as a cache.
 - Split Core is a wild concept where the CPU will start operating 2 PC and executing two flows, the idea is if the CPU has Flex Memory, it could execute a sub-program entirely in it's Flex Memory while keeping working on the main program in the primary Thread.
-- RST: Can be used as an escape command to run the CPU in a new architecture.
+- RST: Will be used as an escape command to run the CPU in a new architecture (something like "CPU will reset if tryed to run unsupported mode"), but also can be used as a "memory flag" to now if the content in the region can be used RER/RERO.
 
 ## Instructions
 The following table lists the architecture current instructions.
@@ -87,7 +88,8 @@ The following table lists the architecture current instructions.
 |Binary    |Instruction |Description                             |
 |----------|------------|----------------------------------------|
 |000 0 0000|NOP         |                                        |
-|RRR F 0001|CP          |Copy                                    |
+|RRR 0 0001|CLR         |Clear                                   |
+|RRR 1 0001|INV         |Inverse                                 |
 |RRR F 1001|AND         |                                        |
 |RRR F 0101|OR          |                                        |
 |RRR F 1101|XOR         |                                        |
@@ -98,7 +100,7 @@ The following table lists the architecture current instructions.
 |RRR F 0010|ADD         |                                        |
 |RRR F 1010|SUB         |                                        |
 |RRR 1 0110|INC         |Increment                               |
-|RRR 0 0110|CLR         |Clear                                   |
+|RRR 0 0110|ADDC        |ADD Carry                               |
 |RRR 1 1110|DEC         |Decrement                               |
 |RRR 0 1110|LI          |Load Immediate from instruction         |
 |RRR 0 0100|LW          |Load Word                               |
@@ -128,7 +130,9 @@ Currently there is a feeling of missing some functionalities, like:
 	- RER & RERO: They are great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define in at high level a "throw away" register that would only be usable when interruption is set off.
 	- Protected Memory: MISC abolishes MMU, even so I believe it's important to have a way to protect itself from malicious users. I'm still studying how to do it, for now I'm looking at RA (Relative Address) and FL (Field Length) of CDC Architecture.
 	- SOLUTIONS: RER/RERO, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way, MISA-I can be kept clean and MISC conformant if desirable (usability will take priority over philosophy).
-- Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, it's currently in the high priority list to be added.
+- Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, it's currently in the high priority list to be added (currently loking into replace RERO).
+- CP/MV: Currently the operation to Copy was removed to resolve a major oversight of not having the 'Inverse' operation, as a bonus the architecture also received an add carry, but the downside is as the architecture does not have a way to directly access all register, when the data needs to interact with two register that doesn't have a link it has to be moved/copied, this can occur in a major overhead as currently the only way to copy is to first clear a register then add the value to be moved/copied to it, and also the data in the other register may need to be moved or even worse, stored. This may look like a design flaw but it's an architectural decision (won't say a good one), is not all data that needs to communicate with every register and current design allow enough flexibility to be reasonably efficient.
+- MEMCPY: With the 'Flex Memory' concept, it would help to have an instruction to copy directly the memory without recurring to LW/SW loop.
 - BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: A dedicated register for flags and used by bit operations.
 - JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
@@ -145,7 +149,9 @@ There are some instructions that was once in the isa, but currently were removed
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
 |111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
-|RRR 0 0001|ADDC        |ADD Carry                               |Yes      |
+|RRR 0 0001|CP          |Copy                                    |Yes      |
+|RRR 0 0001|MV          |Move                                    |Yes      |
+|RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
 |RRR I IIII|RNG         |Generate Random Value                   |Yes      |
 |III I IIII|MKV         |Make Vector                             |Yes      |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
@@ -162,3 +168,40 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|CC          |Control Carry                           |Yes      |
 |III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
 |III I IIII|CPUID       |Read CPU capabilities                   |         |
+
+### Code Example
+The following is a code example for a multiplication loop in software: 
+```
+parameters: base_1 = r5 | end = r1 | base_comp = r2 | loop = r3
+          : operator = r4 | operand = r0 | result = r6 | done = r7
+loop:
+BEQz 0 operator                 # Checks if there are no more operator to multiply
+JP   done                       # Jump to done
+CLR  base_comp                  # Clear comparator
+INC  base_comp                  # Sets 1 to comparator
+AND  base_comp, operator        # Filter operator to see if least significant bit is 0 or 1
+DEC  base_comp			# If 1, it will became zero to make branch easy
+BEQz base_comp                  # Verify se operator least significant bit is 1
+ADD  result, operand            # If true, adds the current value of the operand to the result
+SHL  operand, base_1            # Shifts the multiplicand to the left
+SHR  operator, base_1           # Shifts the multiplier to the right
+jp   loop                       # Repeat the loop
+done:
+# Result is in xr6
+```
+
+For reference, a RISC-V 32IC would look like:
+```
+loop:
+    andi t1, x2, 1     # Checks if the least significant bit is 1
+    beq  t1, x0, skip  # If not, skip adding
+    add  x3, x3, x1    # Adds the current value of the multiplicand to the accumulator
+skip:
+    slli x1, x1, 1     # Shifts the multiplicand to the left
+    srli x2, x2, 1     # Shifts the multiplier to the right
+    bnez x2, loop      # If x2 is not zero, repeat the loop
+done:
+    # Result is in x3
+```
+
+Even though RISC-V has less instruction, it's using 16-bit instruction, so it would translate to 12-Bytes of storage, while on MISA-I its using 11-Bytes because of its 8-bit instructions... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations). Anyway, a win is a win, let's take anything that is possible! In a multiplication loop misa is 1-byte shorter!
