@@ -4,16 +4,19 @@
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
-The architecture will consist of 16 registers while 8 are addressable at a time. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it, this switch will be made through SRB operation.
-Characteristics:
+The architecture will consist of 16 registers are equally divided into 4 registers bank while two banks are active, this makes 8 registers addressable at a time, it' possible to switch which register bank are active through SRB operation. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
+
+### Characteristics:
 - Two addresses architecture.
-- One register for the path (address register).
-- 16 registers: split in sets of 4, the instruction field in SRB will determine which set is to be used.
+- One Memory Address (MEM_ADDR) register.
+- One Program Counter (PC) register.
+- 8 Management Registers.
+- 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used.
 - SRB will match the register bank accordingly:
-	- 00: Will use the default register bank, r7-r4 and r3-r0.
-	- 01: Will swap the lower register bank,  r7-r4 and r11-r8.
-	- 10: Will swap the higher register bank, r15-r12 and r3-r0.
-	- 11: Will swap both registers banks, r15-r12 and r11-r8.
+	- 00 / LL: Will use the default register bank, making avaliable: r7-r4 and r3-r0.
+	- 01 / LH: Will swap the lower register bank, making avaliable:  r7-r4 and r11-r8.
+	- 10 / HL: Will swap the higher register bank, making avaliable: r15-r12 and r3-r0.
+	- 11 / HH: Will swap both registers banks, making avaliable: r15-r12 and r11-r8.
 - 4 Operations Mode:
 	- 00: Management - r11-r4 will hold the CPU configuration.
 	- 01: 8 bit Low mode - the CPU will use only the 8 less significant bits from its register to do operations.
@@ -35,7 +38,7 @@ Characteristics:
   
 |Vector |Multiple execution |Flex Memory | Write Police |Protected Memory |Operations (8/16/32-bit) |
 |-------|-------------------|------------|--------------|-----------------|-------------------------|
-|2-bit  |1-bit              |1-bit             |1-bit         |1-bit            |2-bit                    |
+|2-bit  |1-bit              |1-bit       |1-bit         |1-bit            |2-bit                    |
 
 - CPU Mode (Currently removed) - It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:
 	- Interruption: (default 1)
@@ -172,8 +175,8 @@ There are some instructions that was once in the isa, but currently were removed
 ### Code Example
 The following is a code example for a multiplication loop in software: 
 ```
-parameters: base_1 = r5 | end = r1 | base_comp = r2 | loop = r3
-          : operator = r4 | operand = r0 | result = r6 | done = r7
+parameters: | accumulator = r1 | base_1 = r2  | base_comp = r3  | done = r4 |
+          : | loop = r5        | operand = r6 | operator = r7   |           |
 loop:
 BEQz 0 operator                 # Checks if there are no more operator to multiply
 JP   done                       # Jump to done
@@ -182,12 +185,12 @@ INC  base_comp                  # Sets 1 to comparator
 AND  base_comp, operator        # Filter operator to see if least significant bit is 0 or 1
 DEC  base_comp			# If 1, it will became zero to make branch easy
 BEQz base_comp                  # Verify se operator least significant bit is 1
-ADD  result, operand            # If true, adds the current value of the operand to the result
+ADD  accumulator, operand            # If true, adds the current value of the operand to the result
 SHL  operand, base_1            # Shifts the multiplicand to the left
 SHR  operator, base_1           # Shifts the multiplier to the right
 jp   loop                       # Repeat the loop
 done:
-# Result is in xr6
+# Result is in r7
 ```
 
 For reference, a RISC-V 32IC would look like:
@@ -204,4 +207,4 @@ done:
     # Result is in x3
 ```
 
-Even though RISC-V has less instruction, it's using 16-bit instruction, so it would translate to 12-Bytes of storage, while on MISA-I its using 11-Bytes because of its 8-bit instructions... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations). Anyway, a win is a win, let's take anything that is possible! In a multiplication loop misa is 1-byte shorter!
+Even though RISC-V has less instruction, it's using 16-bit instruction, so it would translate to 12-Bytes of storage, while on MISA-I,  because of its 8-bit instructions, is 'only' using 11-Bytes... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations) is hard to compete. Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 1-byte shorter!
