@@ -124,6 +124,7 @@ The following table lists the architecture current instructions.
 |010 0 0000|RER         |Restore all Registers from memory       |
 |110 0 0000|RERO        |Restore Operation Mode Registers        |
 |100 0 0000|RST         |Reset                                   |
+> I'm looking into removing RERO, maybe a new CBN (Control Branch Negate) would be a better use of OP Code, FENCE is also more there because can be something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
 
 ### Development:
 Currently there is a feeling of missing some functionalities, like:
@@ -175,8 +176,8 @@ There are some instructions that was once in the isa, but currently were removed
 ### Code Example
 The following is a code example for a multiplication loop in software: 
 ```
-parameters: | accumulator = r1 | base_1 = r2  | base_comp = r3  | done = r4 |
-          : | loop = r5        | operand = r6 | operator = r7   |           |
+parameters: |           | operator = r1 | operand = r2    | done = r3        |
+          : | loop = r4 | base_1 = r5   | base_comp = r6  | accumulator = r7 |
 loop:
 BEQz 0 operator                 # Checks if there are no more operator to multiply
 JP   done                       # Jump to done
@@ -185,13 +186,17 @@ INC  base_comp                  # Sets 1 to comparator
 AND  base_comp, operator        # Filter operator to see if least significant bit is 0 or 1
 DEC  base_comp			# If 1, it will became zero to make branch easy
 BEQz base_comp                  # Verify se operator least significant bit is 1
-ADD  accumulator, operand            # If true, adds the current value of the operand to the result
+ADD  accumulator, operand       # If true, adds the current value of the operand to the result
 SHL  operand, base_1            # Shifts the multiplicand to the left
 SHR  operator, base_1           # Shifts the multiplier to the right
 jp   loop                       # Repeat the loop
 done:
 # Result is in r7
 ```
+> Branch instructions are under review, currently every branch compare with zero and skip next instruction if false, this is a really simple but limited behaviour, as comparision is always with zero this opens up the function field (F) to more instruction, like:
+> - NBEQz/BGz: Branch not zero or branch greater than zero, the last one can be used to save one operation in this logic (removes 'DEC base_comp'), NBEQz has its issues since could there been a configuration bit to negate branches.
+> - BEQ/BGE: MISA initially was designed with BEQ/BGE (that is why the function field is not used) in mind, the design could return to it, in this case would be possible to set 'r6 = 1' and use 'BEQ r6 base_comp' to save one instruction (removes 'DEC base_comp').
+> - New category: It would also be possible to compact BEQz/BGEz to one register and use the other OP Code for other instruction like Copy/Move/Swap-register, this can improve operations but needs to be careful to not add to much complexity in a likely ULA part of the OP Code.
 
 For reference, a RISC-V 32IC would look like:
 ```
