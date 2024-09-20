@@ -72,7 +72,7 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 	- Limitations:
 		- AND, OR and XOR will only work over the vector registers.
 		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
-		> Branch (BEQz/BGEz) is under review as a valid operation over the vector register file.
+		> Branch (BEQz/BNEz) is under review as a valid operation over the vector register file.
 - Immediate: Value read from instruction memory.
 - RRR F: 
 	- RRR: holds the operand register address, all changes will be applied to it.
@@ -98,8 +98,9 @@ The following table lists the architecture current instructions.
 |RRR F 1101|XOR         |                                        |
 |RRR F 0011|SHL         |Shift Left                              |
 |RRR F 1011|SHR         |Shift Right                             |
-|RRR F 0111|BEQz        |Branch Equal Zero                       |
-|RRR F 1111|BGEz        |Branch Greater Equal Zero               |
+|RRR 0 0111|BEQz        |Branch if Equal to Zero                 |
+|RRR 1 0111|BNEz        |Branch if Not Equal to Zero             |
+|RRR F 1111|BLT         |Branch Less Than                        |
 |RRR F 0010|ADD         |                                        |
 |RRR F 1010|SUB         |                                        |
 |RRR 1 0110|INC         |Increment                               |
@@ -115,16 +116,23 @@ The following table lists the architecture current instructions.
 |FF0 1 0000|SRB         |Swap Register Bank                      |
 |001 1 0000|CSM         |Control Sequential Memory               |
 |011 1 0000|CI          |Control Interruption                    |
-|101 1 0000|CV          |Control Vector                          |
-|111 1 0000|CRS         |Control Rotation and Signal             |
-|001 0 0000|SNDI        |Send Interrupt                          |
-|011 0 0000|FENCE       |Invalidates I.cache and retires D.cache |
-|101 0 0000|SPC         |Split Core                              |
+|101 1 0000|CRS         |Control Rotation and Signal             |
+|111 1 0000|FENCE       |Invalidates I.cache and retires D.cache |
+|001 0 0000|SDI         |Send Interrupt                          |
+|011 0 0000|CVIM        |Control Vector Interaction Mode         |
+|101 0 0000|CMIM        |Control Multi Interaction Mode          |
 |111 0 0000|SLP         |Sleep (Kill core)                       |
 |010 0 0000|RER         |Restore all Registers from memory       |
 |110 0 0000|RERO        |Restore Operation Mode Registers        |
 |100 0 0000|RST         |Reset                                   |
-> I'm looking into removing RERO, maybe a new CBN (Control Branch Negate) would be a better use of OP Code, FENCE is also more there because can be something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
+> Instructions under review:
+> - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
+> - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
+> - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind (that is why the function field was not used), the design could return to it.
+> - RERO: High likely to be removed, maybe a new CBN (Control Branch Negate) would be a better use of OP Code.
+> - All 'control' instructions could be assigned to new management register designated for it.
+> - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is highly likely to be removed completely, doing so would free a register to hold 'control flags'.
+
 
 ### Development:
 Currently there is a feeling of missing some functionalities, like:
@@ -157,12 +165,10 @@ There are some instructions that was once in the isa, but currently were removed
 |RRR 0 0001|MV          |Move                                    |Yes      |
 |RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
 |RRR I IIII|RNG         |Generate Random Value                   |Yes      |
-|III I IIII|MKV         |Make Vector                             |Yes      |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
 |110 0 0000|FENCE       |Invalidates I.cache and retires D.cache |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
 |110 0 0000|FENCE.D     |Retires data cache                      |         |
-|RRR 0 1110|FILL        |Fill register with 1                    |         |
 |RRR I IIII|BC          |Branch if carry                         |         |
 |RRR R IIII|BITW        |Write Bit                               |         |
 |III I IIII|BITT        |Test Bit                                |         |
@@ -179,24 +185,19 @@ The following is a code example for a multiplication loop in software:
 parameters: |           | operator = r1 | operand = r2    | done = r3        |
           : | loop = r4 | base_1 = r5   | base_comp = r6  | accumulator = r7 |
 loop:
-BEQz 0 operator                 # Checks if there are no more operator to multiply
-JP   done                       # Jump to done
-CLR  base_comp                  # Clear comparator
-INC  base_comp                  # Sets 1 to comparator
-AND  base_comp, operator        # Filter operator to see if least significant bit is 0 or 1
-DEC  base_comp			# If 1, it will became zero to make branch easy
-BEQz base_comp                  # Verify se operator least significant bit is 1
-ADD  accumulator, operand       # If true, adds the current value of the operand to the result
-SHL  operand, base_1            # Shifts the multiplicand to the left
-SHR  operator, base_1           # Shifts the multiplier to the right
-jp   loop                       # Repeat the loop
+    CLR  base_comp                  # Clear comparator
+    INC  base_comp                  # Sets 1 to comparator
+    AND  base_comp, operator        # Filter operator to see if least significant bit is 0 or 1
+    BNEz base_comp                  # Verify se operator least significant bit is 1
+    ADD  accumulator, operand       # If true, adds the current value of the operand to the result
+    SHL  operand, base_1            # Shifts the multiplicand to the left
+    SHR  operator, base_1           # Shifts the multiplier to the right
+    BLT  operator, base_1           # Checks if there are no more operator to multiply
+    JP   done                       # Jump to done (used to return from function call)
+    JP   loop                       # Repeat the loop
 done:
-# Result is in r7
+    # Result is in r7
 ```
-> Branch instructions are under review, currently every branch compare with zero and skip next instruction if false, this is a really simple but limited behaviour, as comparision is always with zero this opens up the function field (F) to more instruction, like:
-> - NBEQz/BGz: Branch not zero or branch greater than zero, the last one can be used to save one operation in this logic (removes 'DEC base_comp'), NBEQz has its issues since could there been a configuration bit to negate branches.
-> - BEQ/BGE: MISA initially was designed with BEQ/BGE (that is why the function field is not used) in mind, the design could return to it, in this case would be possible to set 'r6 = 1' and use 'BEQ r6 base_comp' to save one instruction (removes 'DEC base_comp').
-> - New category: It would also be possible to compact BEQz/BGEz to one register and use the other OP Code for other instruction like Copy/Move/Swap-register, this can improve operations but needs to be careful to not add to much complexity in a likely ULA part of the OP Code.
 
 For reference, a RISC-V 32IC would look like:
 ```
@@ -208,8 +209,9 @@ skip:
     slli x1, x1, 1     # Shifts the multiplicand to the left
     srli x2, x2, 1     # Shifts the multiplier to the right
     bnez x2, loop      # If x2 is not zero, repeat the loop
+    j done             # Jump to done (used to return from function call)
 done:
-    # Result is in x3
+    # Result is in x3 (
 ```
 
-Even though RISC-V has less instruction, it's using 16-bit instruction, so it would translate to 12-Bytes of storage, while on MISA-I,  because of its 8-bit instructions, is 'only' using 11-Bytes... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations) is hard to compete. Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 1-byte shorter!
+Even though RISC-V has less instruction, it's using 16-bit instruction, so its 7 instructions would translate to 14-Bytes of storage, while on MISA-I with its 8-bit instructions its 10 instructions are only using 10-Bytes... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations) is hard to compete. Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 4-byte shorter!
