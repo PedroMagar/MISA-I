@@ -97,9 +97,9 @@ The following table lists the architecture current instructions.
 |RRR F 0101|OR          |                                        |
 |RRR F 1101|XOR         |                                        |
 |RRR F 0011|SHL         |Shift Left                              |
-|RRR F 1011|SHR         |Shift Right                             |
-|RRR 0 0111|BEQz        |Branch if Equal to Zero                 |
-|RRR 1 0111|BNEz        |Branch if Not Equal to Zero             |
+|RRR 0 1011|BEQz        |Branch if Equal to Zero                 |
+|RRR 1 1011|BNEz        |Branch if Not Equal to Zero             |
+|RRR F 0111|BEQ         |Branch if Equal                         |
 |RRR F 1111|BLT         |Branch Less Than                        |
 |RRR F 0010|ADD         |                                        |
 |RRR F 1010|SUB         |                                        |
@@ -160,6 +160,7 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
+|RRR F 1011|SHR         |Shift Right                             |YES      |
 |111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
 |RRR 0 0001|CP          |Copy                                    |Yes      |
 |RRR 0 0001|MV          |Move                                    |Yes      |
