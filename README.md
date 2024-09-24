@@ -1,15 +1,14 @@
 
 # MISA-I
-**My ISA version 1** is a 8-bit MISC (stretching really hard its meaning) ISA made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502). The goal is to see how much could be improved upon the aged ISA's if they were designed with a modern concept in mind.
+**My ISA version 1** is a 8-bit MISC ISA (in spirit) made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502). The goal is to see how the aged ISAs would fared if they had to compete with a modern design.
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
 The architecture will consist of 16 registers are equally divided into 4 registers bank while two banks are active, this makes 8 registers addressable at a time, it' possible to switch which register bank are active through SRB operation. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
 
 ### Characteristics:
-- Two addresses architecture.
-- One Memory Address (MEM_ADDR) register.
 - One Program Counter (PC) register.
+- One Memory Address (MEM_ADDR) register.
 - 8 Management Registers.
 - 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used.
 - SRB will match the register bank accordingly:
@@ -17,6 +16,11 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 	- 01 / LH: Will swap the lower register bank, making avaliable:  r7-r4 and r11-r8.
 	- 10 / HL: Will swap the higher register bank, making avaliable: r15-r12 and r3-r0.
 	- 11 / HH: Will swap both registers banks, making avaliable: r15-r12 and r11-r8.
+- Two addresses architecture. **[Rd = Rd (op) Rs]**
+- Instructions that operate with two-registers will always assume Rd = RRR from instruction, while Rs is RRR+4 if function bit (F) is 0 or RRR+3 if function bit (F) is 1.
+ > Rs address is still under consideration, could be RRR+4 and RRR+1|RRR-1.
+- Branch Behavior: Skip one instruction if false.
+  > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or SMEM instruction before jump), or maybe could utilize another register for address.
 - 4 Operations Mode:
 	- 00: Management - r11-r4 will hold the CPU configuration.
 	- 01: 8 bit Low mode - the CPU will use only the 8 less significant bits from its register to do operations.
@@ -31,7 +35,7 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 	- r6: NPC - New Core Program Counter
 	- r5: FMA - Flex Memory Address.
 	- r4: INTM - Interruption message.
-	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen from r9 through r8.
+	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen with r9 and r8, restore instructions (RER) would refuse to restore an "higher privileged" (out of bounds) state, a restore in the max address could also indirectly be used to return control to the caller.
  	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6 or r5.
  	> With the addition of ADDC instruction, the existence of a register to hold LOC (Last Operation Carry) became unclear, with the necessity to allow application to act to the interruption, it became possible to change r4 to allow more flexibility in the architecture.
 - CPUID:
@@ -100,7 +104,7 @@ The following table lists the architecture current instructions.
 |RRR 0 1011|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 1011|BNEz        |Branch if Not Equal to Zero             |
 |RRR F 0111|BEQ         |Branch if Equal                         |
-|RRR F 1111|BLT         |Branch Less Than                        |
+|RRR F 1111|BGE         |Branch if Greater or Equal              |
 |RRR F 0010|ADD         |                                        |
 |RRR F 1010|SUB         |                                        |
 |RRR 1 0110|INC         |Increment                               |
@@ -166,6 +170,7 @@ There are some instructions that was once in the isa, but currently were removed
 |RRR 0 0001|MV          |Move                                    |Yes      |
 |RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
 |RRR I IIII|RNG         |Generate Random Value                   |Yes      |
+|RRR F 1111|BLT         |Branch if Less Than                     |         |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
 |110 0 0000|FENCE       |Invalidates I.cache and retires D.cache |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
@@ -183,8 +188,8 @@ There are some instructions that was once in the isa, but currently were removed
 ### Code Example
 The following is a code example for a multiplication loop in software: 
 ```
-parameters: |           | operator = r1 | operand = r2    | done = r3        |
-          : | loop = r4 | base_1 = r5   | base_comp = r6  | accumulator = r7 |
+parameters: | done = r0       | loop = r2        | operator = r1 | operand = r3  |
+          : | base_comp = r5  | accumulator = r7 | base_1 = r6   | base_n_1 = r4 |
 loop:
     CLR  base_comp                  # Clear comparator
     INC  base_comp                  # Sets 1 to comparator
@@ -192,13 +197,14 @@ loop:
     BNEz base_comp                  # Verify se operator least significant bit is 1
     ADD  accumulator, operand       # If true, adds the current value of the operand to the result
     SHL  operand, base_1            # Shifts the multiplicand to the left
-    SHR  operator, base_1           # Shifts the multiplier to the right
-    BLT  operator, base_1           # Checks if there are no more operator to multiply
+    SHL  operator, base_n_1         # Shifts the multiplier to the right
+    BEQz operator                   # Checks if there are no more operator to multiply
     JP   done                       # Jump to done (used to return from function call)
     JP   loop                       # Repeat the loop
 done:
     # Result is in r7
 ```
+> Only operating with shift left (SHL) resulted in the utilization of the last easy to access register (without change register bank), this sacrifice was made to spare the OP Code for a new operation.
 
 For reference, a RISC-V 32IC would look like:
 ```
