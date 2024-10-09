@@ -19,6 +19,7 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 - Two addresses architecture. **[Rd = Rd (op) Rs]**
 - Instructions that operate with two-registers will always assume Rd = RRR from instruction, while Rs is RRR+4 if function bit (F) is 0 or RRR+3 if function bit (F) is 1.
  > Rs address is still under consideration, could be RRR+4 and RRR+1|RRR-1.
+- Carry behavior: Instructions that could exceed registers capacity (ADD, SUB, SHF) will fill an internal bit (carry) that can not be read directly but can be used for flow control (branch) with appropriate instruction (BC).
 - Branch Behavior: Skip one instruction if false.
   > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or SMEM instruction before jump), or maybe could utilize another register for address.
 - 4 Operations Mode:
@@ -91,7 +92,7 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 - Flex Memory: A small amount (planned 64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
 - FMA: Allows the positioning of the flex memory address, any memory that exceeds the addressable limit can be used as a cache.
 - Split Core is a wild concept where the CPU will start operating 2 PC and executing two flows, the idea is if the CPU has Flex Memory, it could execute a sub-program entirely in it's Flex Memory while keeping working on the main program in the primary Thread.
-- RST: Will be used as an escape command to run the CPU in a new architecture (something like "CPU will reset if tryed to run unsupported mode"), but also can be used as a "memory flag" to now if the content in the region can be used RER/RERO.
+- RST: Will be used as an escape command to run the CPU in a new architecture (something like "CPU will reset if tryed to run unsupported mode"), but also can be used as a "memory flag" to know if the content in the region can be used RER.
 
 ## Instructions
 The following table lists the architecture current instructions.
@@ -112,7 +113,7 @@ The following table lists the architecture current instructions.
 |RRR F 0010|ADD         |                                        |
 |RRR F 1010|SUB         |                                        |
 |RRR 1 0110|INC         |Increment                               |
-|RRR 0 0110|ADDC        |ADD Carry                               |
+|RRR 0 0110|BC          |Branch if Carry                         |
 |RRR 1 1110|DEC         |Decrement                               |
 |RRR 0 1110|LI          |Load Immediate from instruction         |
 |RRR 0 0100|LW          |Load Word                               |
@@ -127,20 +128,21 @@ The following table lists the architecture current instructions.
 |101 1 0000|CRS         |Control Rotation and Signal             |
 |111 1 0000|FENCE*      |Invalidates I.cache and retires D.cache |
 |001 0 0000|SDI         |Send Interrupt                          |
-|011 0 0000|CVIM*       |Control Vector Interaction Mode         |
-|101 0 0000|CMIM*       |Control Multi Interaction Mode          |
-|111 0 0000|SLP         |Sleep (Kill core)                       |
+|011 0 0000|SVIM*       |Set Vector Interaction Mode             |
+|101 0 0000|SMIM*       |Set Multi Interaction Mode              |
+|111 0 0000|SSIM*       |Set Single Interaction Mode             |
 |010 0 0000|RER*        |Restore all Registers from memory       |
-|110 0 0000|RERO*       |Restore Operation Mode Registers        |
+|110 0 0000|SLP         |Sleep (Kill core)                       |
 |100 0 0000|RST         |Reset                                   |
 > Instructions under review:
-> * : Not mandatory instructions
+> - \* : Not mandatory instructions
 > - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
 > - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
 > - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind (that is why the function field was not used), the design could return to it.
 > - RERO: High likely to be removed, maybe a new CBN (Control Branch Negate) would be a better use of OP Code.
 > - All 'control' instructions could be assigned to new management register designated for it.
 > - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is highly likely to be removed completely, doing so would free a register to hold 'control flags'.
+> - ADDC can be replaced by BC
 
 
 ### Development:
@@ -148,21 +150,20 @@ Currently there is a feeling of missing some functionalities, like:
 - Become a true MISC architecture: Currently the instruction structure are much more RISC like, and some instructions can even been said to be CISC, here are the main culprits:
 	- LI: will read the next instruction (8-bit data mode) or even next two instructions (16-bit data mode) as immediate value to store on register, it's not complex, but can be argued to have a variable length instruction size, even so this instruction is here to stay, cause as 8-bit do not let left much space for an immediate, without it generating an address to read or store a value would became painfully taxing on the runtime.
 	- Changing CPU behavior is something to be debated, as if already existing instructions will have a different behavior some may count then as new instructions, or as a complex instruction, or both, this would lead to a violation of philosophy, none less this one is also here to stay, the opcode saved and flexibility added is what gives hope of this ISA be competitive.
-	- RER & RERO: They are great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define at high level a "throw away" register that would only be usable when interruption is set off.
+	- RER: Problably a CISC instructions, It's great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define at high level a "throw away" register that would only be usable when interruption is set off.
 	- Protected Memory: MISC abolishes MMU, even so I believe it's important to have a way to protect itself from malicious users. I'm still studying how to do it, for now I'm looking at RA (Relative Address) and FL (Field Length) of CDC Architecture.
 	- SOLUTIONS: RER/RERO, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way, MISA-I can be kept clean and MISC conformant if desirable (usability will take priority over philosophy).
 - Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, it's currently in the high priority list to be added (currently loking into replace RERO).
-- CP/MV: Currently the operation to Copy was removed to resolve a major oversight of not having the 'Inverse' operation, as a bonus the architecture also received an add carry, but the downside is as the architecture does not have a way to directly access all register, when the data needs to interact with two register that doesn't have a link it has to be moved/copied, this can occur in a major overhead as currently the only way to copy is to first clear a register then add the value to be moved/copied to it, and also the data in the other register may need to be moved or even worse, stored. This may look like a design flaw but it's an architectural decision (won't say a good one), is not all data that needs to communicate with every register and current design allow enough flexibility to be reasonably efficient.
 - MEMCPY: With the 'Flex Memory' concept, it would help to have an instruction to copy directly the memory without recurring to LW/SW loop.
 - BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: A dedicated register for flags and used by bit operations.
 - JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
 - Cache and TSO (Total Store Order): Let's start simple, 128 Bytes of storage on a 6T Flip-Flop would result in 6144 Transistors, a MOS 6502 has 3500, Intel 8080 has 6000 and Z80 has 8500 ... For an 8-bit CPU, a cache is useless or at least on the best of the best a really really really HUGE burden, BUT, if low transistor count (small size) is not one of the requirements, and a wide input (like 4-way decode) is what you are doing, a small cache can be desired, and when there is a cache, there is a possibility of memory mismatch with other devices on the bus, to prevent this, sync could be done by setting the CPU in write through mode and using FENCE instruction in sensible areas.
-- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used similarly), it could be added by replacing SMEM H (when F=1), this would also free some space for more instructions.
+- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used similarly), all this flexibility for the small price of an almost throw away instruction space can not be classified as anything other than a bargain, this is why it's here and probably to stay.
 
 There are also some operations that have some high overhead due to the architecture:
 - Branch between values may require a SUB or ADD operation before comparison, due to the destructive nature of the architecture, if the original value of comparison cannot be lost there will be an operation overhead to copy the main value to an available register before the Branch, if there is no available register at the moment... Well... glhf...
-- Carry behavior can not be changed directly like others control instructions (CSM, CS and CV), for changing this behavior will be necessary to enter management mode (OPM 0) and then updating 'CPU Mode' register with the desired value/behavior.
+- CP/MV: Currently the operation to Copy was removed to resolve a major oversight of not having the 'Inverse' operation, as a bonus the architecture also received a branch if carry operation, the downside is since the architecture does not have a way to directly access all register, when the data needs to interact with two register that doesn't have a link betwen then, the data has to be moved/copied, now this can occur in a major overhead as currently the only way to copy is to first clear a register then add the value to be moved/copied to it, and also the data in the other register may need to be moved or even worse, stored. This may look like a design flaw but it's an architectural decision (won't say a good one), is not all data that needs to communicate with every register and current design allow enough flexibility to be reasonably efficient.
 
 ### Honorable Mentions
 There are some instructions that was once in the isa, but currently were removed due to conflict/priority compared to the current design, but there are also others that are just waiting to be in:
@@ -170,14 +171,17 @@ There are some instructions that was once in the isa, but currently were removed
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
 |RRR F 1011|SHR         |Shift Right                             |Yes      |
+|RRR 0 0110|ADDC        |ADD Carry                               |         |
 |RRR F 0111|BEQ         |Branch if Equal                         |Yes      |
 |RRR F 1111|BGE         |Branch if Greater or Equal              |Yes      |
 |RRR F 1111|BLT         |Branch if Less Than                     |         |
+|RRR F IIII|CBN         |Control Branch Negate                   |         |
 |111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
 |RRR 0 0001|CP          |Copy                                    |Yes      |
 |RRR 0 0001|MV          |Move                                    |Yes      |
 |RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
 |RRR I IIII|RNG         |Generate Random Value                   |Yes      |
+|110 0 0000|RERO*       |Restore Operation Mode Registers        |         |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
 |110 0 0000|FENCE.D     |Retires data cache                      |         |
