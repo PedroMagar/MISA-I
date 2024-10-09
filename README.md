@@ -1,10 +1,10 @@
 
 # MISA-I
-**My ISA version 1** is a 8-bit MISC ISA (in spirit) made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502). The goal is to see how the aged ISAs would fared if they had to compete with a modern design.
+**My ISA version 1** is a 8-bit MISC ISA (in spirit) made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502).
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
-The architecture will consist of 16 registers are equally divided into 4 registers bank while two banks are active, this makes 8 registers addressable at a time, it' possible to switch which register bank are active through SRB operation. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
+The architecture will consist of 16 registers are equally divided into 4 registers bank while only two banks are active at a time, this makes 8 registers addressable at a time, it's possible to switch which register bank are active through SRB operation. Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
 
 ### Characteristics:
 - One Program Counter (PC) register.
@@ -16,17 +16,23 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 	- 01 / LH: Will swap the lower register bank, making avaliable:  r7-r4 and r11-r8.
 	- 10 / HL: Will swap the higher register bank, making avaliable: r15-r12 and r3-r0.
 	- 11 / HH: Will swap both registers banks, making avaliable: r15-r12 and r11-r8.
+	> A CPU configuration without register bank (8 fixed registers) is under consideration, this could spare some transistor that could be crucial for a truly MOS 6502 competitor.
 - Two addresses architecture. **[Rd = Rd (op) Rs]**
 - Instructions that operate with two-registers will always assume Rd = RRR from instruction, while Rs is RRR+4 if function bit (F) is 0 or RRR+3 if function bit (F) is 1.
  > Rs address is still under consideration, could be RRR+4 and RRR+1|RRR-1.
 - Carry behavior: Instructions that could exceed registers capacity (ADD, SUB, SHF) will fill an internal bit (carry) that can not be read directly but can be used for flow control (branch) with appropriate instruction (BC).
 - Branch Behavior: Skip one instruction if false.
   > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or SMEM instruction before jump), or maybe could utilize another register for address.
-- 4 Operations Mode:
-	- 00: Management - r11-r4 will hold the CPU configuration.
-	- 01: 8 bit Low mode - the CPU will use only the 8 less significant bits from its register to do operations.
-	- 10: 8 bit High mode - the CPU will use only the 8 most significant bits from its register to do operations.
-	- 11: 16 bit mode - the CPU will use the full register size and manipulate data in 16 bit.
+- Up to 8 Operations Mode - The CPU will have 16 registers with the size specified on CPUID, the registers will be composed as follows:
+	- 000: Low 16 Low 8 bit mode - CPU will only use bits 7 to 0 of its registers and manipulate data in 8 bit.
+	- 001: Low 16 High 8 bit mode - CPU will only use bits 15 to 8 of its registers and manipulate data in 8 bit.
+	- 010: High 16 Low 8 bit mode - CPU will only use bits 23 to 16 of its registers and manipulate data in 8 bit.
+	- 011: High 16 High 8 bit mode - CPU will only use bits 31 to 24 of its registers and manipulate data in 8 bit.
+	- 100: Low 16 bit mode - CPU will only use bits 15 to 0 of its registers and manipulate data in 16 bit.
+	- 101: High 16 bit mode - CPU will only use bits 31 to 16 of its registers and manipulate data in 16 bit.
+	- 110: Full 32 bit mode - the CPU will use the full register size and manipulate data in 32 bit.
+	- 111: Management - r11-r4 will hold the CPU configuration. (obrigatory)
+	> Only mode ```000``` and ```111``` are required.
 - Management:
 	- r11: Interruption Address.
 	- r10: Interruption timer (cycles).
@@ -41,35 +47,35 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 
 - CPUID:
   
-| Division | Multiplication | SIMD | Flex Memory | Write Police | Protected Memory | Operations (8/16/32-bit/Unknow) |
+| Division | Multiplication | SIMD | Flex Memory | Write Police | Protected Memory | Operations (8/16/32-bit/Unknown) |
 |----------|----------------|------|-------------|--------------|------------------|---------------------------------|
 | 1-bit    | 1-bit          |1-bit | 1-bit       | 1-bit        | 1-bit            | 2-bit                           |
 
-- CPU Mode (Currently removed) - It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:
-	- Interruption: (default 1)
-		- 1: CPU will jump to interruption Address as soon as it receives an interrupt signal.
-		- 0: CPU will ignore interruption signal.
-	- Signaled: (default 1)
-		- 1: CPU will execute ADD/SUB considering signals.
-		- 0: CPU  will execute ADD/SUB as unassigned operations.
-	- Rotation: (default 0)
-		- 1: CPU will execute shift operations (SL/SR) with rotation of its bits.
-		- 0: CPU will execute shift operations (SL/SR) without rotation of its bits, filling with 0.
-	- Carry: (default 1)
-		- 1: CPU will include the Carry bit of the last ADD/SUB operation in a multi ADD/SUB sequence.
-		- 0: CPU will not include the Carry bit in any ADD/SUB operation.
-	- Sequential Memory: (default 0)
-		- 1: CPU will update memory address after a memory operation (Read/Write) with +1.
-		- 0: CPU will not update memory address after a memory operation (Read/Write).
-	- Write-Through: (default 1)
-		- 1: If the CPU has a cache, it will always write changes to memory.
-		- 0: If the CPU has a cache, it will only write changes to memory on cache line retirement.
-	- FENCE: (default 0)
-		- 1: CPU will only invalidate instruction cache, effectively working as FENCE.I.
-		- 0: FENCE instruction will invalidate instruction cache and retire data cache when called.
-	- Vector: (default 0)
-		- 1: CPU will enter in vector mode.
-		- 0: CPU will operate normally.
+- CPU Mode (Currently removed) - ~~It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:~~
+	- ~~Interruption: (default 1)~~
+		- ~~1: CPU will jump to interruption Address as soon as it receives an interrupt signal.~~
+		- ~~0: CPU will ignore interruption signal.~~
+	- ~~Signaled: (default 1)~~
+		- ~~1: CPU will execute ADD/SUB considering signals.~~
+		- ~~0: CPU  will execute ADD/SUB as unassigned operations.~~
+	- ~~Rotation: (default 0)~~
+		- ~~1: CPU will execute shift operations (SL/SR) with rotation of its bits.~~
+		- ~~0: CPU will execute shift operations (SL/SR) without rotation of its bits, filling with 0.~~
+	- ~~Carry: (default 1)~~
+		- ~~1: CPU will include the Carry bit of the last ADD/SUB operation in a multi ADD/SUB sequence.~~
+		- ~~0: CPU will not include the Carry bit in any ADD/SUB operation.~~
+	- ~~Sequential Memory: (default 0)~~
+		- ~~1: CPU will update memory address after a memory operation (Read/Write) with +1.~~
+		- ~~0: CPU will not update memory address after a memory operation (Read/Write).~~
+	- ~~Write-Through: (default 1)~~
+		- ~~1: If the CPU has a cache, it will always write changes to memory.~~
+		- ~~0: If the CPU has a cache, it will only write changes to memory on cache line retirement.~~
+	- ~~FENCE: (default 0)~~
+		- ~~1: CPU will only invalidate instruction cache, effectively working as FENCE.I.~~
+		- ~~0: FENCE instruction will invalidate instruction cache and retire data cache when called.~~
+	- ~~Vector: (default 0)~~
+		- ~~1: CPU will enter in vector mode.~~
+		- ~~0: CPU will operate normally.~~
 - Vector Mode:
 	- Will replace the upper 4 registers with vector registers (size to be informed in CPUID)
 	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the lower register files (r3-r0 or r11-r8) while 'VV' will be the vectorized reference of the full register file:
@@ -120,30 +126,29 @@ The following table lists the architecture current instructions.
 |RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
 |RRR 1 1100|JAL         |Jump and Link                           |
-|FFF 0 1000|OPM         |Operation Mode                          |
-|RRR 1 1000|SMEM        |Swap Memory Address                     |
-|FF0 1 0000|SRB         |Swap Register Bank                      |
+|RRR 0 1000|SMEM        |Swap Memory Address                     |
+|FFF 1 1000|OPM         |Operation Mode                          |
+|FF0 1 0000|SRB*        |Swap Register Bank                      |
 |001 1 0000|CSM         |Control Sequential Memory               |
 |011 1 0000|CI          |Control Interruption                    |
 |101 1 0000|CRS         |Control Rotation and Signal             |
 |111 1 0000|FENCE*      |Invalidates I.cache and retires D.cache |
 |001 0 0000|SDI         |Send Interrupt                          |
-|011 0 0000|SVIM*       |Set Vector Interaction Mode             |
-|101 0 0000|SMIM*       |Set Multi Interaction Mode              |
-|111 0 0000|SSIM*       |Set Single Interaction Mode             |
+|011 0 0000|SSIM*       |Set Single Interaction Mode             |
+|101 0 0000|SVIM*       |Set Vector Interaction Mode             |
+|111 0 0000|SMIM*       |Set Multi Interaction Mode              |
 |010 0 0000|RER*        |Restore all Registers from memory       |
 |110 0 0000|SLP         |Sleep (Kill core)                       |
 |100 0 0000|RST         |Reset                                   |
-> Instructions under review:
-> - \* : Not mandatory instructions.
-> - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
-> - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
-> - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind (that is why the function field was not used), the design could return to it.
-> - RERO: High likely to be removed, maybe a new CBN (Control Branch Negate) would be a better use of OP Code.
-> - All 'control' instructions could be assigned to new management register designated for it.
-> - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is highly likely to be removed, doing so would free a register to hold 'CPU Mode'.
-> - ADDC was replaced by BC
 
+Instructions under review:
+- \* : Not mandatory instructions.
+- RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
+- FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
+- BEQ/BGE: MISA initially was designed with BEQ/BGE in mind, currently they were replaced with MUL/DIV instructions, the idea behind this decision is, even though an 8-bit cpu (or first gen 16-bit) does not need hardware multiplication, a more powerful CPU (an i486 competitor) would become impossible to be competitive because of a design flaw (no OP code left), in order to keep the architecture 'future' proof, two highly expensive and valuable OP Codes had to be sacrificed, as a bonus now it's possible to use MISA-I as a compact mode for a future MISA-II without a lot of drawback.
+- All 'control' instructions could be assigned to new management register designated for it, freeing some OP Codes.
+- SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
+- ADDC was replaced by BC.
 
 ### Development:
 Currently there is a feeling of missing some functionalities, like:
