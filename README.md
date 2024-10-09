@@ -41,9 +41,9 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 
 - CPUID:
   
-|Vector |Multiple execution |Flex Memory | Write Police |Protected Memory |Operations (8/16/32-bit) |
-|-------|-------------------|------------|--------------|-----------------|-------------------------|
-|2-bit  |1-bit              |1-bit       |1-bit         |1-bit            |2-bit                    |
+| Division | Multiplication | SIMD | Flex Memory | Write Police | Protected Memory | Operations (8/16/32-bit/Unknow) |
+|----------|----------------|------|-------------|--------------|------------------|---------------------------------|
+| 1-bit    | 1-bit          |1-bit | 1-bit       | 1-bit        | 1-bit            | 2-bit                           |
 
 - CPU Mode (Currently removed) - It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:
 	- Interruption: (default 1)
