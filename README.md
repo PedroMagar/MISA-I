@@ -36,8 +36,8 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 	- r5: FMA - Flex Memory Address.
 	- r4: INTM - Interruption message.
 	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen with r9 and r8, restore instructions (RER) would refuse to restore an "higher privileged" (out of bounds) state, a restore in the max address could also indirectly be used to return control to the caller.
- 	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6 or r5.
- 	> With the addition of ADDC instruction, the existence of a register to hold LOC (Last Operation Carry) became unclear, with the necessity to allow application to act to the interruption, it became possible to change r4 to allow more flexibility in the architecture.
+ 	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6, r5 or r4.
+
 - CPUID:
   
 |Vector |Multiple execution |Flex Memory | Write Police |Protected Memory |Operations (8/16/32-bit) |
@@ -71,19 +71,23 @@ The architecture will consist of 16 registers are equally divided into 4 registe
 		- 0: CPU will operate normally.
 - Vector Mode:
 	- Will replace the upper 4 registers with vector registers (size to be informed in CPUID)
-	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the upper register files (r7-r4 or r15-r12) while 'VV' will be the vector register file which ranges from v3 through v0.
-	- RRR ---> RV F: Where 'F' will define if operation is on register file (0) or on the vector registers (1), 'RV' will hold the address of register that the operation must be over.
+	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the lower register files (r3-r0 or r11-r8) while 'VV' will be the vectorized reference of the full register file:
+		- v0: bank 0 - Registers from r0 to r3.
+		- v1: bank 1 - Registers from r4 to r7.
+		- v2: bank 2 - Registers from r8 to r11.
+		- v3: bank 3 - Registers from r12 to r15.
+	- RRR ---> RV F: Where 'F' will define if operation is on register file (0) or on the vector registers (1), 'RV' will hold the address of register or vector that the operation must be over.
+		- ex: RV F = ```INC 10 1``` will increment v2 (all registers in register bank 2) by 1, while ```INC 10 0``` will increment the current r2 from active register bank.
 	- Limitations:
-		- AND, OR and XOR will only work over the vector registers.
 		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
 		> Branch (BEQz/BNEz) is under review as a valid operation over the vector register file.
 - Immediate: Value read from instruction memory.
 - RRR F: 
 	- RRR: holds the operand register address, all changes will be applied to it.
-	- F = 0: This will make the operator have the most significant bit of its address been the inverse the operand
-	- F = 1: This will make the operator be the register before the operand (operand_addr -1)
+	- F = 0: This will make the operator be operand + 4 (RRR + 4)
+	- F = 1: This will make the operator be operand + 3 (RRR + 3)
 	- If the instruction does not have a function bit 'F', it will operate solely on operand or assume F=0.
-- Sleep will stop on an interruption signal, this can be achieved by an interruption pin or interruption timer.
+- Sleep will stop at interruption signal, this can be achieved by an interruption pin or interruption timer.
 - Flex Memory: A small amount (planned 64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
 - FMA: Allows the positioning of the flex memory address, any memory that exceeds the addressable limit can be used as a cache.
 - Split Core is a wild concept where the CPU will start operating 2 PC and executing two flows, the idea is if the CPU has Flex Memory, it could execute a sub-program entirely in it's Flex Memory while keeping working on the main program in the primary Thread.
@@ -100,11 +104,11 @@ The following table lists the architecture current instructions.
 |RRR F 1001|AND         |                                        |
 |RRR F 0101|OR          |                                        |
 |RRR F 1101|XOR         |                                        |
-|RRR F 0011|SHL         |Shift Left                              |
+|RRR F 0011|SHF         |Shift                                   |
 |RRR 0 1011|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 1011|BNEz        |Branch if Not Equal to Zero             |
-|RRR F 0111|BEQ         |Branch if Equal                         |
-|RRR F 1111|BGE         |Branch if Greater or Equal              |
+|RRR F 0111|MUL*        |                                        |
+|RRR F 1111|DIV*        |                                        |
 |RRR F 0010|ADD         |                                        |
 |RRR F 1010|SUB         |                                        |
 |RRR 1 0110|INC         |Increment                               |
@@ -121,15 +125,16 @@ The following table lists the architecture current instructions.
 |001 1 0000|CSM         |Control Sequential Memory               |
 |011 1 0000|CI          |Control Interruption                    |
 |101 1 0000|CRS         |Control Rotation and Signal             |
-|111 1 0000|FENCE       |Invalidates I.cache and retires D.cache |
+|111 1 0000|FENCE*      |Invalidates I.cache and retires D.cache |
 |001 0 0000|SDI         |Send Interrupt                          |
-|011 0 0000|CVIM        |Control Vector Interaction Mode         |
-|101 0 0000|CMIM        |Control Multi Interaction Mode          |
+|011 0 0000|CVIM*       |Control Vector Interaction Mode         |
+|101 0 0000|CMIM*       |Control Multi Interaction Mode          |
 |111 0 0000|SLP         |Sleep (Kill core)                       |
-|010 0 0000|RER         |Restore all Registers from memory       |
-|110 0 0000|RERO        |Restore Operation Mode Registers        |
+|010 0 0000|RER*        |Restore all Registers from memory       |
+|110 0 0000|RERO*       |Restore Operation Mode Registers        |
 |100 0 0000|RST         |Reset                                   |
 > Instructions under review:
+> * : Not mandatory instructions
 > - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
 > - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
 > - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind (that is why the function field was not used), the design could return to it.
@@ -142,8 +147,8 @@ The following table lists the architecture current instructions.
 Currently there is a feeling of missing some functionalities, like:
 - Become a true MISC architecture: Currently the instruction structure are much more RISC like, and some instructions can even been said to be CISC, here are the main culprits:
 	- LI: will read the next instruction (8-bit data mode) or even next two instructions (16-bit data mode) as immediate value to store on register, it's not complex, but can be argued to have a variable length instruction size, even so this instruction is here to stay, cause as 8-bit do not let left much space for an immediate, without it generating an address to read or store a value would became painfully taxing on the runtime.
-	- Changing CPU behavior is something to be debated, as if already existing instructions will have a different behavior some may count then as new instructions, or as a complex instruction, or both, this would lead to a violation of philosophy, none less this one is also here to stay, the opcode saved and flexibility added is what gives hope of this ISA been competitive.
-	- RER & RERO: They are great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define in at high level a "throw away" register that would only be usable when interruption is set off.
+	- Changing CPU behavior is something to be debated, as if already existing instructions will have a different behavior some may count then as new instructions, or as a complex instruction, or both, this would lead to a violation of philosophy, none less this one is also here to stay, the opcode saved and flexibility added is what gives hope of this ISA be competitive.
+	- RER & RERO: They are great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define at high level a "throw away" register that would only be usable when interruption is set off.
 	- Protected Memory: MISC abolishes MMU, even so I believe it's important to have a way to protect itself from malicious users. I'm still studying how to do it, for now I'm looking at RA (Relative Address) and FL (Field Length) of CDC Architecture.
 	- SOLUTIONS: RER/RERO, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way, MISA-I can be kept clean and MISC conformant if desirable (usability will take priority over philosophy).
 - Watchdog Timer: Due to instruction space limitations, it was removed in favor of the FENCE instruction, it's currently in the high priority list to be added (currently loking into replace RERO).
@@ -164,15 +169,16 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|RRR F 1011|SHR         |Shift Right                             |YES      |
+|RRR F 1011|SHR         |Shift Right                             |Yes      |
+|RRR F 0111|BEQ         |Branch if Equal                         |Yes      |
+|RRR F 1111|BGE         |Branch if Greater or Equal              |Yes      |
+|RRR F 1111|BLT         |Branch if Less Than                     |         |
 |111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
 |RRR 0 0001|CP          |Copy                                    |Yes      |
 |RRR 0 0001|MV          |Move                                    |Yes      |
 |RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
 |RRR I IIII|RNG         |Generate Random Value                   |Yes      |
-|RRR F 1111|BLT         |Branch if Less Than                     |         |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
-|110 0 0000|FENCE       |Invalidates I.cache and retires D.cache |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
 |110 0 0000|FENCE.D     |Retires data cache                      |         |
 |RRR I IIII|BC          |Branch if carry                         |         |
@@ -180,10 +186,12 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|BITT        |Test Bit                                |         |
 |III I IIII|RPC         |Read PC                                 |         |
 |III I IIII|RI          |Read Interruption                       |         |
-|III I IIII|CR          |Control Rotation                        |         |
+|III I IIII|CR          |Control Rotation                        |No       |
+|III I IIII|CS          |Control Signal                          |No       |
 |III I IIII|CC          |Control Carry                           |Yes      |
 |III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
-|III I IIII|CPUID       |Read CPU capabilities                   |         |
+|III I IIII|CWD         |Control Watchdog                        |Yes      |
+|RRR I IIII|CPUID       |Read CPU capabilities                   |         |
 
 ### Code Example
 The following is a code example for a multiplication loop in software: 
@@ -196,8 +204,8 @@ loop:
     AND  base_comp, operator        # Filter operator to see if least significant bit is 0 or 1
     BNEz base_comp                  # Verify se operator least significant bit is 1
     ADD  accumulator, operand       # If true, adds the current value of the operand to the result
-    SHL  operand, base_1            # Shifts the multiplicand to the left
-    SHL  operator, base_n_1         # Shifts the multiplier to the right
+    SHF  operand, base_1            # Shifts the multiplicand to the left
+    SHF  operator, base_n_1         # Shifts the multiplier to the right
     BEQz operator                   # Checks if there are no more operator to multiply
     JP   done                       # Jump to done (used to return from function call)
     JP   loop                       # Repeat the loop
