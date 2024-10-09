@@ -99,25 +99,25 @@ The following table lists the architecture current instructions.
 
 |Binary    |Instruction |Description                             |
 |----------|------------|----------------------------------------|
-|000 0 0000|NOP         |                                        |
-|RRR 0 0001|CLR         |Clear                                   |
-|RRR 1 0001|INV         |Inverse                                 |
-|RRR F 1001|AND         |                                        |
-|RRR F 0101|OR          |                                        |
-|RRR F 1101|XOR         |                                        |
-|RRR F 0011|SHF         |Shift                                   |
-|RRR 0 1011|BEQz        |Branch if Equal to Zero                 |
-|RRR 1 1011|BNEz        |Branch if Not Equal to Zero             |
-|RRR F 0111|MUL*        |                                        |
-|RRR F 1111|DIV*        |                                        |
-|RRR F 0010|ADD         |                                        |
-|RRR F 1010|SUB         |                                        |
-|RRR 1 0110|INC         |Increment                               |
-|RRR 0 0110|BC          |Branch if Carry                         |
-|RRR 1 1110|DEC         |Decrement                               |
-|RRR 0 1110|LI          |Load Immediate from instruction         |
-|RRR 0 0100|LW          |Load Word                               |
-|RRR 1 0100|SW          |Store Word                              |
+|000 0 0000|NOP         |No Operation                            |
+|RRR F 0001|AND         |Logic AND                               |
+|RRR F 1001|OR          |Logic OR                                |
+|RRR F 0101|XOR         |Logic XOR                               |
+|RRR F 1101|SHF         |Shift                                   |
+|RRR F 0011|ADD         |Addition                                |
+|RRR F 1011|SUB         |Subtraction                             |
+|RRR F 0111|MUL*        |Multiplication                          |
+|RRR F 1111|DIV*        |Division                                |
+|RRR 0 0010|CLR         |Clear                                   |
+|RRR 1 0010|INV         |Inverse                                 |
+|RRR 0 1010|DEC         |Decrement                               |
+|RRR 1 1010|INC         |Increment                               |
+|RRR 0 0110|LI          |Load Immediate from instruction         |
+|RRR 1 0110|LW          |Load Word                               |
+|RRR 0 1110|SW          |Store Word                              |
+|RRR 1 1110|BC          |Branch if Carry                         |
+|RRR 0 0100|BEQz        |Branch if Equal to Zero                 |
+|RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
 |RRR 1 1100|JAL         |Jump and Link                           |
 |FFF 0 1000|OPM         |Operation Mode                          |
@@ -135,14 +135,14 @@ The following table lists the architecture current instructions.
 |110 0 0000|SLP         |Sleep (Kill core)                       |
 |100 0 0000|RST         |Reset                                   |
 > Instructions under review:
-> - \* : Not mandatory instructions
+> - \* : Not mandatory instructions.
 > - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
 > - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter "8-bit compact mode" will have a way to stays true to its cache.
 > - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind (that is why the function field was not used), the design could return to it.
 > - RERO: High likely to be removed, maybe a new CBN (Control Branch Negate) would be a better use of OP Code.
 > - All 'control' instructions could be assigned to new management register designated for it.
-> - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is highly likely to be removed completely, doing so would free a register to hold 'control flags'.
-> - ADDC can be replaced by BC
+> - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is highly likely to be removed, doing so would free a register to hold 'CPU Mode'.
+> - ADDC was replaced by BC
 
 
 ### Development:
