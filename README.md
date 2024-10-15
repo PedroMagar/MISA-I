@@ -1,10 +1,11 @@
 
 # MISA-I
-**My ISA version 1** is a 8-bit MISC ISA (in spirit) made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502).
+**My ISA version 1** is an 8-bit MISC ISA (in spirit) made to be functional, efficient and competitive against well established architectures (AKA z80 / MOS 6502).
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
-MISA-I is a Two-Address architecture, it consist of 1 program counter register, 1 memory address register, 8 management registers and 16 general purpose registers that are equally divided into 4 registers bank while only two banks are active at a time (making 8 registers addressable), it's possible to switch which register bank is active through an operation (SRB). Since 8-bit instruction is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
+MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program counter register, 1 memory address register, 8 management registers and 16 general purpose registers that are equally divided into 4 registers bank while only two banks are active at a time (making 8 registers addressable), it's possible to switch which register bank is active through an operation (SRB). Since 8-bit is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
+> PC/MEM_ADDR Register Size is under consideration, for now the idea is that it's at least 16-bit, even for a full 8-bit implementation, in this case register bank 2 and 3 will swap the upper bits, while register bank 0 and 1 will swap the lower bits of MEM_ADDR during SMEM operation.
 
 ### Characteristics:
 - One Program Counter (PC) register.
@@ -20,7 +21,7 @@ MISA-I is a Two-Address architecture, it consist of 1 program counter register, 
 	- r4: INTM - Interruption message.
 	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen with r9 and r8, restore instructions (RER) would refuse to restore an "higher privileged" (out of bounds) state, a restore in the max address could also indirectly be used to return control to the caller.
  	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6, r5 or r4.
-- 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used, SRB will match the register bank accordingly:
+- 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used, CPU starts with Rb0 and Rb3 active, SRB will match the register bank accordingly:
 	- 00 / LL: Will use the default register bank, making avaliable: r7-r4 and r3-r0.
 	- 01 / LH: Will swap the lower register bank, making avaliable:  r7-r4 and r11-r8.
 	- 10 / HL: Will swap the higher register bank, making avaliable: r15-r12 and r3-r0.
@@ -32,21 +33,20 @@ MISA-I is a Two-Address architecture, it consist of 1 program counter register, 
 - Carry behavior: Instructions that could exceed registers capacity (ADD, SUB, SHF) will fill an internal bit (carry) that can not be read directly but can be used for flow control (branch) with appropriate instruction (BC).
 - Branch Behavior: Skip one instruction if false.
   > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or SMEM instruction before jump), or maybe could utilize another register for address.
-- Up to 8 Operations Mode - The CPU will have 16 registers with the size specified on CPUID, the registers will be composed as follows:
-	- 000: Low 16 Low 8 bit mode - CPU will only use bits 7 to 0 of its registers and manipulate data in 8 bit.
-	- 001: Low 16 High 8 bit mode - CPU will only use bits 15 to 8 of its registers and manipulate data in 8 bit.
-	- 010: High 16 Low 8 bit mode - CPU will only use bits 23 to 16 of its registers and manipulate data in 8 bit.
-	- 011: High 16 High 8 bit mode - CPU will only use bits 31 to 24 of its registers and manipulate data in 8 bit.
-	- 100: Low 16 bit mode - CPU will only use bits 15 to 0 of its registers and manipulate data in 16 bit.
-	- 101: High 16 bit mode - CPU will only use bits 31 to 16 of its registers and manipulate data in 16 bit.
-	- 110: Full 32 bit mode - the CPU will use the full register size and manipulate data in 32 bit.
-	- 111: Management - r11-r4 will hold the CPU configuration. (obrigatory)
-	> Only mode ```000``` and ```111``` are required.
+- Operation Mode: If supported, the CPU can split its registers in half (until reach 8-bits) and do operations on it, the registers composition can be as follows:
+	- Management - r11-r4 will hold the CPU configuration. (obrigatory)
+	- Full 32 bit mode - the CPU will use the full register size and manipulate data in 32 bit.
+	- High 16 bit mode - CPU will only use bits 31 to 16 of its registers and manipulate data in 16 bit.
+	- Low 16 bit mode - CPU will only use bits 15 to 0 of its registers and manipulate data in 16 bit.
+	- High 16 High 8 bit mode - CPU will only use bits 31 to 24 of its registers and manipulate data in 8 bit.
+	- High 16 Low 8 bit mode - CPU will only use bits 23 to 16 of its registers and manipulate data in 8 bit.
+	- Low 16 High 8 bit mode - CPU will only use bits 15 to 8 of its registers and manipulate data in 8 bit.
+	- Low 16 Low 8 bit mode - CPU will only use bits 7 to 0 of its registers and manipulate data in 8 bit.
 - CPUID:
-  
-| Division | Multiplication | SIMD | Flex Memory | Write Police | Protected Memory | Operations (8/16/32-bit/Unknown) |
-|----------|----------------|------|-------------|--------------|------------------|---------------------------------|
-| 1-bit    | 1-bit          |1-bit | 1-bit       | 1-bit        | 1-bit            | 2-bit                           |
+
+| Write Police* | Division* | Multiplication* | MIMD  | SIMD-M | SIMD-V | Flex Memory | Protected Memory | Operations (8/16/32-bit/Unknown) |
+|---------------|-----------|-----------------|-------|--------|--------|-------------|------------------|---------------------------------|
+| 1-bit         | 1-bit     | 1-bit           | 1-bit | 1-bit  | 1-bit  | 1-bit       | 1-bit            | 2-bit                           |
 
 - CPU Mode (Currently removed) - ~~It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:~~
 	- ~~Interruption: (default 1)~~
@@ -126,18 +126,25 @@ The following table lists the architecture current instructions.
 |RRR 0 1100|APC         |Add to Program Counter                  |
 |RRR 1 1100|JAL         |Jump and Link                           |
 |RRR 0 1000|SMEM        |Swap Memory Address                     |
-|FFF 1 1000|OPM         |Operation Mode                          |
-|FF0 1 0000|SRB*        |Swap Register Bank                      |
-|001 1 0000|CSM         |Control Sequential Memory               |
-|011 1 0000|CI          |Control Interruption                    |
-|101 1 0000|CRS         |Control Rotation and Signal             |
-|111 1 0000|CFP*        |Control Float Point operation           |
-|001 0 0000|SDI         |Send Interrupt                          |
-|011 0 0000|SSIM*       |Set Single Interaction Mode             |
-|101 0 0000|SVIM*       |Set Vector Interaction Mode             |
-|111 0 0000|FENCE*      |Invalidates I.cache and retires D.cache |
-|010 0 0000|RER*        |Restore all Registers from memory       |
-|110 0 0000|SLP         |Sleep (Kill core)                       |
+|FF0 1 1000|SRB         |Swap Register Bank                      |
+|001 1 1000|OPMS*       |Operation Mode Split Precision          |
+|011 1 1000|OPMF*       |Operation Mode Fuse Precision           |
+|101 1 1000|OPMH*       |Operation Mode Swap Half                |
+|111 1 1000|MNG         |Management Mode                         |
+|000 1 0000|SLP         |Sleep (Kill core)                       |
+|010 1 0000|FENCE*      |Invalidates I.cache and retires D.cache |
+|100 1 0000|SDI         |Send Interruption                       |
+|110 1 0000|IIL         |Invert Interuption Line                 |
+|001 1 0000|SSIM*       |Set Single Interaction Mode             |
+|011 1 0000|SVIM*       |Set Vector Interaction Mode             |
+|101 1 0000|SMIM*       |Set Multi Interaction Mode              |
+|111 1 0000|RER         |Restore all Registers from memory       |
+|001 0 0000|CSM         |Control Sequential Memory               |
+|011 0 0000|CI          |Control Interruption                    |
+|101 0 0000|CRS         |Control Rotation and Signal             |
+|111 0 0000|CFP*        |Control Float Point operation           |
+|010 0 0000|CWD*        |Control Watchdog                        |
+|110 0 0000|WDC*        |Clear Watchdog Time                     |
 |100 0 0000|RST         |Reset                                   |
 
 Instructions under review:
@@ -146,11 +153,8 @@ Instructions under review:
 - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter *"8-bit compact mode"* will have a way to stays true to its cache.
 - *CFO* is an emergency mesure to have some possibility of float point operations, this certanly is not required for an 8/16-bit CPU, but this instruction is also aiming at a future evolution running on *compact mode* that would need float point, this instruction is may be replaced by SMIM.
 - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind, currently they were replaced with MUL/DIV instructions, the idea behind this decision is, even though an 8-bit cpu (or first gen 16-bit) does not need hardware multiplication, a more powerful CPU (an i486 competitor) would not be able to be competitive because of a design flaw (no OP code left), in order to keep the architecture 'future' proof, two highly expensive and valuable OP Codes had to be sacrificed, as a bonus now it's possible to use MISA-I as a compact mode for a future MISA-II without a lot of drawback.
-- All 'control' instructions could be assigned to new management register designated for it, freeing some OP Codes.
 - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
-- ADDC was replaced by BC.
-- Watchdog: Everyone who wants to be on safeguard lives watch dogs, the problem is that in order to have one, would be necessary to free two OP codes (one to clear it, other to enable/disable it), OP codes are really scarce, currently there is none, one alternative under consideration would be to replaced OPM for a more compact one.
-  > OPM could become 3 instructions, one to split the precision (OPMS), one to determine wich half is to operate (OPMH), and the last one could fuse it back (OPMF), this would end up freeing 5 instructions that could be used to bring besides watchdog, SMIM, SPC or even RNG with a fixed register destination (always on r7 or r0).
+- BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register.
 
 ### Development:
 Currently there is a feeling of missing some functionalities, like:
@@ -177,7 +181,9 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|111 0 0000|SMIM*       |Set Multi Interaction Mode              |Yes      |
+|III I IIII|SPC         |Split Core                              |Yes      |
+|III I IIII|CSHD        |Control Shift Direction                 |         |
+|FFF 1 1000|OPM         |Operation Mode                          |         |
 |RRR F 0011|SHL         |Shift Left                              |         |
 |RRR F 1011|SHR         |Shift Right                             |         |
 |RRR 0 0110|ADDC        |ADD Carry                               |         |
@@ -185,16 +191,14 @@ There are some instructions that was once in the isa, but currently were removed
 |RRR F 1111|BGE         |Branch if Greater or Equal              |Yes      |
 |RRR F 1111|BLT         |Branch if Less Than                     |         |
 |RRR F IIII|CBN         |Control Branch Negate                   |         |
-|111 0 0000|CWDT        |Clear Watchdog Time                     |Yes      |
-|RRR 0 0001|CP          |Copy                                    |Yes      |
-|RRR 0 0001|MV          |Move                                    |Yes      |
+|RRR 0 0001|CP          |Copy                                    |         |
+|RRR 0 0001|MV          |Move                                    |         |
 |RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
 |RRR I IIII|RNG         |Generate Random Value                   |Yes      |
 |110 0 0000|RERO*       |Restore Operation Mode Registers        |         |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
 |110 0 0000|FENCE.D     |Retires data cache                      |         |
-|RRR I IIII|BC          |Branch if carry                         |         |
 |RRR R IIII|BITW        |Write Bit                               |         |
 |III I IIII|BITT        |Test Bit                                |         |
 |III I IIII|RPC         |Read PC                                 |         |
