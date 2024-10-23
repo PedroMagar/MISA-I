@@ -5,7 +5,7 @@
 
 ## Architecture
 MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program counter register, 1 memory address register, 8 management registers and 16 general purpose registers that are equally divided into 4 registers bank while only two banks are active at a time (making 8 registers addressable), it's possible to switch which register bank is active through an operation (SRB). Since 8-bit is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
-> PC/MEM_ADDR Register Size is under consideration, for now the idea is that it's at least 16-bit, even for a full 8-bit implementation, in this case register bank 2 and 3 will swap the upper bits, while register bank 0 and 1 will swap the lower bits of MEM_ADDR during SMEM operation.
+> PC/MEM_ADDR Register Size is under consideration, for now the idea is that it's at least 16-bit, even for an 8-bit implementation, in this case register bank 2 and 3 will swap the upper bits, while register bank 0 and 1 will swap the lower bits of MEM_ADDR during SMEM operation.
 
 ### Characteristics:
 - One Program Counter (PC) register.
@@ -20,7 +20,6 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- r5: FMA - Flex Memory Address.
 	- r4: INTM - Interruption message.
 	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen with r9 and r8, restore instructions (RER) would refuse to restore an "higher privileged" (out of bounds) state, a restore in the max address could also indirectly be used to return control to the caller.
- 	> CPU Mode (Define how the CPU will operate) is under consideration to come back on r6, r5 or r4.
 - 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used, CPU starts with Rb0 and Rb3 active, SRB will match the register bank accordingly:
 	- 00 / LL: Will use the default register bank, making avaliable: r7-r4 and r3-r0.
 	- 01 / LH: Will swap the lower register bank, making avaliable:  r7-r4 and r11-r8.
@@ -48,33 +47,9 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 |---------------|-----------|-----------------|-------|--------|--------|-------------|------------------|---------------------------------|
 | 1-bit         | 1-bit     | 1-bit           | 1-bit | 1-bit  | 1-bit  | 1-bit       | 1-bit            | 2-bit                           |
 
-- CPU Mode (Currently removed) - ~~It will be possible to change some CPU behavior, to do that each bit in 'CPU Mode' register will define it:~~
-	- ~~Interruption: (default 1)~~
-		- ~~1: CPU will jump to interruption Address as soon as it receives an interrupt signal.~~
-		- ~~0: CPU will ignore interruption signal.~~
-	- ~~Signaled: (default 1)~~
-		- ~~1: CPU will execute ADD/SUB considering signals.~~
-		- ~~0: CPU  will execute ADD/SUB as unassigned operations.~~
-	- ~~Rotation: (default 0)~~
-		- ~~1: CPU will execute shift operations (SL/SR) with rotation of its bits.~~
-		- ~~0: CPU will execute shift operations (SL/SR) without rotation of its bits, filling with 0.~~
-	- ~~Carry: (default 1)~~
-		- ~~1: CPU will include the Carry bit of the last ADD/SUB operation in a multi ADD/SUB sequence.~~
-		- ~~0: CPU will not include the Carry bit in any ADD/SUB operation.~~
-	- ~~Sequential Memory: (default 0)~~
-		- ~~1: CPU will update memory address after a memory operation (Read/Write) with +1.~~
-		- ~~0: CPU will not update memory address after a memory operation (Read/Write).~~
-	- ~~Write-Through: (default 1)~~
-		- ~~1: If the CPU has a cache, it will always write changes to memory.~~
-		- ~~0: If the CPU has a cache, it will only write changes to memory on cache line retirement.~~
-	- ~~FENCE: (default 0)~~
-		- ~~1: CPU will only invalidate instruction cache, effectively working as FENCE.I.~~
-		- ~~0: FENCE instruction will invalidate instruction cache and retire data cache when called.~~
-	- ~~Vector: (default 0)~~
-		- ~~1: CPU will enter in vector mode.~~
-		- ~~0: CPU will operate normally.~~
-- Vector Mode:
-	- Will replace the upper 4 registers with vector registers (size to be informed in CPUID)
+> CPUID is under considaration to be removed and become a instruction.
+- Vector Mode (SIMD-V):
+	- Will replace the upper 4 registers with vector registers by a reference of the register bank.
 	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the lower register files (r3-r0 or r11-r8) while 'VV' will be the vectorized reference of the full register file:
 		- v0: bank 0 - Registers from r0 to r3.
 		- v1: bank 1 - Registers from r4 to r7.
@@ -86,6 +61,15 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
 		> Branch (BEQz/BNEz) is under review as a valid operation over the vector register file.
 		> SRB is under consideration to use its two bits to select wich Register bank is in the lower reference.
+- Multi Interaction Mode (SIMD-M):
+	- Will work similarly to vector mode, but the botton side will also be a reference to the register bank, also the operations are now between each register directly.
+	- Ex: ```01 00 OP``` will result in
+		- ```r4 = r4 (op) r0```
+  		- ```r5 = r5 (op) r1```
+  		- ```r6 = r6 (op) r2```
+		- ```r7 = r7 (op) r3```
+	- VV RR --> RBd RBs: Register bank destiny (RBd) can not be equal Register bank source(RBs).
+	> Using RBd = RBs is under considerations, this would be the only method to make a register interact with itself.
 - Immediate: Value read from instruction memory.
 - RRR F: 
 	- RRR: holds the operand register address, all changes will be applied to it.
@@ -155,6 +139,7 @@ Instructions under review:
 - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind, currently they were replaced with MUL/DIV instructions, the idea behind this decision is, even though an 8-bit cpu (or first gen 16-bit) does not need hardware multiplication, a more powerful CPU (an i486 competitor) would not be able to be competitive because of a design flaw (no OP code left), in order to keep the architecture 'future' proof, two highly expensive and valuable OP Codes had to be sacrificed, as a bonus now it's possible to use MISA-I as a compact mode for a future MISA-II without a lot of drawback.
 - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
 - BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register.
+- INV: Invert all bits that are 0 to 1 and 1 to 0, currently there is no instruction to change the endianness of a register.
 
 ### Development:
 Currently there is a feeling of missing some functionalities, like:
@@ -205,10 +190,9 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|RI          |Read Interruption                       |         |
 |III I IIII|CR          |Control Rotation                        |No       |
 |III I IIII|CS          |Control Signal                          |No       |
-|III I IIII|CC          |Control Carry                           |Yes      |
+|III I IIII|CC          |Control Carry                           |No       |
 |III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
-|III I IIII|CWD         |Control Watchdog                        |Yes      |
-|RRR I IIII|CPUID       |Read CPU capabilities                   |         |
+|III I IIII|CPUID       |Read CPU capabilities                   |Yes      |
 
 ### Code Example
 The following is a code example for a multiplication loop in software: 
@@ -229,7 +213,7 @@ loop:
 done:
     # Result is in r7
 ```
-> Only operating with shift left (SHL) resulted in the utilization of the last easy to access register (without change register bank), this sacrifice was made to spare the OP Code for a new operation.
+> Only operating with shift left (SHF) resulted in the utilization of the last easy to access register (without changing register bank), this sacrifice was made to spare the OP Code for a new operation.
 
 For reference, a RISC-V 32IC would look like:
 ```
@@ -246,4 +230,4 @@ done:
     # Result is in x3 (
 ```
 
-Even though RISC-V has less instruction, it's using 16-bit instruction, so its 7 instructions would translate to 14-Bytes of storage, while on MISA-I with its 8-bit instructions its 10 instructions are only using 10-Bytes... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations) is hard to compete. Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 4-byte shorter!
+Even though RISC-V has less instruction, it's using 16-bit instruction, so its 7 instructions would translate to 14-Bytes of storage, while on MISA-I with its 8-bit instructions is using 10-Bytes for its 10 instructions... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations) is hard to compete. Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 4-byte shorter!
