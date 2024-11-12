@@ -14,7 +14,7 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- MEM_STK has 4x CPU Operation Size as its size.
 	- Operations (STKS/JAL) will only use the lower bits.
 	- Stack Rotations (STKR) will shift rotate the register by 'Current Operation Size' bits to the right.
-	> MEM_STK brings many advantages over MEM_ADDR, starting by allowing each CPU implementation to decides how many address bits would be appropriate for it, a low bit CPU will have a standard behaviour when its address space is bigger than its registers size, it  would be possible to hold a write, read and/or jump address at the same time, the stack could be used as a extension to the registers file size, also access violation would be easier debug because the address would be in a know register. The downside of such implementation is that to access its data would be necessary to rotate the register, also split core concept becomes more taxing (a second core would need its own stack).
+	> MEM_STK brings many advantages over MEM_ADDR, starting by allowing each CPU implementation to decides how many address bits would be appropriate for it, a low bit CPU will have a standard behaviour when its address space is bigger than its registers size, it  would be possible to hold a write, read and/or jump address at the same time, the stack could be used as a extension to the registers file size, also access violation would be easier to debug because the address would be in a know register. The downside of such implementation is that to access its data would be necessary to rotate the register, also split core concept becomes more taxing (a second core would need its own stack).
 - 8 Management Registers:
 	- r11: Interruption Address.
 	- r10: Interruption timer (cycles).
@@ -25,7 +25,7 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- r5: FMA - Flex Memory Address.
 	- r4: INTM - Interruption message.
 	> Currently, the focus of 'Management' mode is to access some CPU information such as what is its capabilities or how is its current operation state, there is also an attempt to implement protected memory, this can be seen with r9 and r8, restore instructions (RER) would refuse to restore an "higher privileged" (out of bounds) state, a restore in the max address could also indirectly be used to return control to the caller.
-- 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used, CPU starts with Rb0 and Rb3 active, SRB will match the register bank accordingly:
+- 16 registers: split in sets of 4 (Register Bank), the instruction field in SRB (Swap Register Bank) will determine which set is to be used, CPU starts with Rb0 and Rb1 active, SRB will match the register bank accordingly:
 	- 00 / LL: Will use the default register bank, making avaliable: r7-r4 and r3-r0.
 	- 01 / LH: Will swap the lower register bank, making avaliable:  r7-r4 and r11-r8.
 	- 10 / HL: Will swap the higher register bank, making avaliable: r15-r12 and r3-r0.
@@ -115,8 +115,9 @@ The following table lists the architecture current instructions.
 |RRR 0 0100|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
-|RRR 1 1100|**STKP**    |**Stack Position**                      |
-|RRR 0 1000|**STKS**    |**Swap with Stack**                     |
+|RRR 1 1100|**STKS**    |**Swap with Stack**                     |
+|FF0 0 1000|**STKE**    |**Set Stack Element Active**            |
+|FF1 0 1000|**STKSRB**  |**Swap Stack with Register Bank**       |
 |FF0 1 1000|SRB         |Swap Register Bank                      |
 |001 1 1000|OPMS*       |Operation Mode Split Precision          |
 |011 1 1000|OPMF*       |Operation Mode Fuse Precision           |
@@ -148,7 +149,7 @@ Instructions under review:
 - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
 - INV: Invert all bits that are 0 to 1 and 1 to 0, currently there is no instruction to change the endianness of a register.
 - BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register, alternatively, this OP Code could be used for a instruction to change the endianness while BC replace SSIM and keeps the usual behaviour of skip one.
-- **STKP/STKR**: Instead of a stack rotation and position, it's under consideration to set directly the desired stack element through a **STKE** instruction.
+- **JAL/STKR**: Trying to make a better place for it, STKR is under consideration to be replaced.
 
 ### Development:
 Currently there is a feeling of **missing** some **functionalities**, like:
@@ -174,7 +175,7 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|FFI I IIII|**STKE**    |Set Stack Element                       |**YES**  |
+|001 1 0000|**SSIM***   |**Set Single Interaction Mode**         |         |
 |III I IIII|SPC         |Split Core                              |Yes      |
 |III I IIII|CSHD        |Control Shift Direction                 |Yes      |
 |FFF 1 1000|OPM         |Operation Mode                          |No       |
