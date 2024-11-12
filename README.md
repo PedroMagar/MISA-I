@@ -5,11 +5,16 @@
 
 ## Architecture
 MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program counter register, 1 memory address register, 8 management registers and 16 general purpose registers that are equally divided into 4 registers bank while only two banks are active at a time (making 8 registers addressable), it's possible to switch which register bank is active through an operation (SRB). Since 8-bit is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
-> PC/MEM_ADDR Register Size is under consideration, for now the idea is that it's at least 16-bit, even for an 8-bit implementation, in this case register bank 2 and 3 will swap the upper bits, while register bank 0 and 1 will swap the lower bits of MEM_ADDR during SMEM operation.
+> ~~PC/MEM_ADDR Register Size is under consideration, for now the idea is that it's at least 16-bit, even for an 8-bit implementation, in this case register bank 2 and 3 will swap the upper bits, while register bank 0 and 1 will swap the lower bits of MEM_ADDR during SMEM operation.~~
+> With MEM_ADDR been replaced by MEM_STK, this makes possible for the address to utilize as many bits as desired.
 
 ### Characteristics:
 - One Program Counter (PC) register.
-- One Memory Address (MEM_ADDR) register.
+- One Memory Stack (MEM_STK) register:
+	- MEM_STK has 4x CPU Operation Size as its size.
+	- Operations (STKS/JAL) will only use the lower bits.
+	- Stack Rotations (STKR) will shift rotate the register by 'Current Operation Size' bits to the right.
+	> MEM_STK brings many advantages over MEM_ADDR, starting by allowing each CPU implementation to decides how many address bits would be appropriate for it, a low bit CPU will have a standard behaviour when its address space is bigger than its registers size, it  would be possible to hold a write, read and/or jump address at the same time, the stack could be used as a extension to the registers file size, also access violation would be easier debug because the address would be in a know register. The downside of such implementation is that to access its data would be necessary to rotate the register, also split core concept becomes more taxing (a second core would need its own stack).
 - 8 Management Registers:
 	- r11: Interruption Address.
 	- r10: Interruption timer (cycles).
@@ -31,7 +36,7 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
  > Rs address is still under consideration, could be RRR+4 and RRR+1|RRR-1.
 - Carry behavior: Instructions that could exceed registers capacity (ADD, SUB, SHF) will fill an internal bit (carry) that can not be read directly but can be used for flow control (branch) with appropriate instruction (BC).
 - Branch Behavior: Skip one instruction if false.
-  > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or SMEM instruction before jump), or maybe could utilize another register for address.
+  > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or STKS instruction before jump), or maybe could utilize another register for address.
 - Operation Mode: If supported, the CPU can split its registers in half (until reach 8-bits) and do operations on it, the registers composition can be as follows:
 	- Management - r11-r4 will hold the CPU configuration. (obrigatory)
 	- Full 32 bit mode - the CPU will use the full register size and manipulate data in 32 bit.
@@ -41,13 +46,15 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- High 16 Low 8 bit mode - CPU will only use bits 23 to 16 of its registers and manipulate data in 8 bit.
 	- Low 16 High 8 bit mode - CPU will only use bits 15 to 8 of its registers and manipulate data in 8 bit.
 	- Low 16 Low 8 bit mode - CPU will only use bits 7 to 0 of its registers and manipulate data in 8 bit.
-- CPUID:
+- CPUID (8-bit mandatory):
 
 | Write Police* | Division* | Multiplication* | MIMD  | SIMD-M | SIMD-V | Flex Memory | Protected Memory | Operations (8/16/32-bit/Unknown) |
 |---------------|-----------|-----------------|-------|--------|--------|-------------|------------------|---------------------------------|
 | 1-bit         | 1-bit     | 1-bit           | 1-bit | 1-bit  | 1-bit  | 1-bit       | 1-bit            | 2-bit                           |
 
-> CPUID is under considaration to be removed and become a instruction.
+> CPUID is under consideration to become a true CPUID where it would hold a CPU identifier instead of its capabilities.
+- Split Core (MIMD):
+	- Core will start a new execution loop in parallel on NPC address as soon as NPC is filled with any value besides 0.
 - Vector Mode (SIMD-V):
 	- Will replace the upper 4 registers with vector registers by a reference of the register bank.
 	- RRR F --> VV RR: Where 'RR' is the operator and will be any of the lower register files (r3-r0 or r11-r8) while 'VV' will be the vectorized reference of the full register file:
@@ -58,7 +65,7 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- RRR ---> RV F: Where 'F' will define if operation is on register file (0) or on the vector registers (1), 'RV' will hold the address of register or vector that the operation must be over.
 		- ex: RV F = ```INC 10 1``` will increment v2 (all registers in register bank 2) by 1, while ```INC 10 0``` will increment the current r2 from active register bank.
 	- Limitations:
-		- SMEM, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
+		- STKS, APC and JAL will stay unchanged and operate on the original register name, this way it's possible to keep the control flow working without consuming addresses available to vector operations.
 		> Branch (BEQz/BNEz) is under review as a valid operation over the vector register file.
 		> SRB is under consideration to use its two bits to select wich Register bank is in the lower reference.
 - Multi Interaction Mode (SIMD-M):
@@ -99,8 +106,8 @@ The following table lists the architecture current instructions.
 |RRR F 1111|DIV*        |Division                                |
 |RRR 0 0010|CLR         |Clear                                   |
 |RRR 1 0010|INV         |Inverse                                 |
-|RRR 0 1010|DEC         |Decrement                               |
-|RRR 1 1010|INC         |Increment                               |
+|RRR 0 1010|INC         |Increment                               |
+|RRR 1 1010|DEC         |Decrement                               |
 |RRR 0 0110|LI          |Load Immediate from instruction         |
 |RRR 1 0110|LW          |Load Word                               |
 |RRR 0 1110|SW          |Store Word                              |
@@ -108,8 +115,8 @@ The following table lists the architecture current instructions.
 |RRR 0 0100|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
-|RRR 1 1100|JAL         |Jump and Link                           |
-|RRR 0 1000|SMEM        |Swap Memory Address                     |
+|RRR 1 1100|**STKP**    |**Stack Position**                      |
+|RRR 0 1000|**STKS**    |**Swap with Stack**                     |
 |FF0 1 1000|SRB         |Swap Register Bank                      |
 |001 1 1000|OPMS*       |Operation Mode Split Precision          |
 |011 1 1000|OPMF*       |Operation Mode Fuse Precision           |
@@ -118,8 +125,8 @@ The following table lists the architecture current instructions.
 |000 1 0000|SLP         |Sleep (Kill core)                       |
 |010 1 0000|FENCE*      |Invalidates I.cache and retires D.cache |
 |100 1 0000|SDI         |Send Interruption                       |
-|110 1 0000|IIL         |Invert Interuption Line                 |
-|001 1 0000|SSIM*       |Set Single Interaction Mode             |
+|110 1 0000|**JAL**     |**Jump and Link**                       |
+|001 1 0000|**STKR**    |**Stack Rotation**                      |
 |011 1 0000|SVIM*       |Set Vector Interaction Mode             |
 |101 1 0000|SMIM*       |Set Multi Interaction Mode              |
 |111 1 0000|RER         |Restore all Registers from memory       |
@@ -133,6 +140,7 @@ The following table lists the architecture current instructions.
 
 Instructions under review:
 - \* : Not mandatory instructions.
+- **Bold**: Newly added / under review.
 - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
 - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter *"8-bit compact mode"* will have a way to stays true to its cache.
 - *CFP* is an emergency mesure to have some possibility of float point operations, this certanly is not required for an 8/16-bit CPU, but this instruction is also aiming at a future evolution running on *compact mode* that would need float point.
@@ -140,6 +148,7 @@ Instructions under review:
 - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
 - INV: Invert all bits that are 0 to 1 and 1 to 0, currently there is no instruction to change the endianness of a register.
 - BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register, alternatively, this OP Code could be used for a instruction to change the endianness while BC replace SSIM and keeps the usual behaviour of skip one.
+- **STKP/STKR**: Instead of a stack rotation and position, it's under consideration to set directly the desired stack element through a **STKE** instruction.
 
 ### Development:
 Currently there is a feeling of **missing** some **functionalities**, like:
@@ -165,9 +174,12 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
+|FFI I IIII|**STKE**    |Set Stack Element                       |**YES**  |
 |III I IIII|SPC         |Split Core                              |Yes      |
 |III I IIII|CSHD        |Control Shift Direction                 |Yes      |
 |FFF 1 1000|OPM         |Operation Mode                          |No       |
+|RRR 0 1000|**SMEM**    |**Swap Memory Address**                 |         |
+|RRR 1 1100|**JAL**     |**Jump and Link**                       |         |
 |RRR F 0011|SHL         |Shift Left                              |         |
 |RRR F 1011|SHR         |Shift Right                             |         |
 |RRR 0 0110|ADDC        |ADD Carry                               |         |
@@ -187,11 +199,14 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|BITT        |Test Bit                                |         |
 |III I IIII|RPC         |Read PC                                 |         |
 |III I IIII|RI          |Read Interruption                       |         |
+|110 1 0000|IIL         |Invert Interuption Line                 |         |
 |III I IIII|CR          |Control Rotation                        |No       |
 |III I IIII|CS          |Control Signal                          |No       |
 |III I IIII|CC          |Control Carry                           |No       |
 |III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
 |III I IIII|CPUID       |Read CPU capabilities                   |Yes      |
+
+> **Bold**: Newly added.
 
 ### Code Example
 The following is a code example for a multiplication loop in software: 
