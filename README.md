@@ -37,7 +37,7 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 - Carry behavior: Instructions that could exceed registers capacity (ADD, SUB, SHF) will fill an internal bit (carry) that can not be read directly but can be used for flow control (branch) with appropriate instruction (BC).
 - Branch Behavior: Skip one instruction if false.
   > Behavior is still under review, maybe could skip two instructions (it would allow a SRB or STKS instruction before jump), or maybe could utilize another register for address.
-- Operation Mode: If supported, the CPU can split its registers in half (until reach 8-bits) and do operations on it, the registers composition can be as follows:
+- Operation Mode: If supported, the CPU can split its registers in half (until it reach 8-bits) and do operations on it, the registers composition can be as follows:
 	- Management - r11-r4 will hold the CPU configuration. (obrigatory)
 	- Full 32 bit mode - the CPU will use the full register size and manipulate data in 32 bit.
 	- High 16 bit mode - CPU will only use bits 31 to 16 of its registers and manipulate data in 16 bit.
@@ -46,6 +46,7 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- High 16 Low 8 bit mode - CPU will only use bits 23 to 16 of its registers and manipulate data in 8 bit.
 	- Low 16 High 8 bit mode - CPU will only use bits 15 to 8 of its registers and manipulate data in 8 bit.
 	- Low 16 Low 8 bit mode - CPU will only use bits 7 to 0 of its registers and manipulate data in 8 bit.
+	> The smaller size is under consideration to become 4-bits, this would make it friendlier to software BCD.
 - CPUID (8-bit mandatory):
 
 | Write Police* | Division* | Multiplication* | MIMD  | SIMD-M | SIMD-V | Flex Memory | Protected Memory | Operations (8/16/32-bit/Unknown) |
@@ -115,22 +116,24 @@ The following table lists the architecture current instructions.
 |RRR 0 0100|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
-|RRR 1 1100|**STKS**    |**Swap with Stack**                     |
-|FF0 0 1000|**STKE**    |**Set Stack Element Active**            |
-|FF1 0 1000|**STKSRB**  |**Swap Stack with Register Bank**       |
-|FF0 1 1000|SRB         |Swap Register Bank                      |
-|001 1 1000|OPMS*       |Operation Mode Split Precision          |
-|011 1 1000|OPMF*       |Operation Mode Fuse Precision           |
-|101 1 1000|OPMH*       |Operation Mode Swap Half                |
-|111 1 1000|MNG         |Management Mode                         |
+|RRR 1 1100|SRSTK       |Swap Register with Stack lower bits     |
+|FF0 0 1000|SRB         |Swap Register Bank                      |
+|F01 0 1000|**SRBSTK**  |**Swap Register Bank with Stack**       |
+|011 0 1000|**RRSTK**   |**Rotate Stack to the Right**           |
+|111 0 1000|**RLSTK**   |**Rotate Stack to the Left**            |
+|FF0 1 1000|**STKE**    |**Set Stack Element Active**            |
+|001 1 1000|JAL         |Jump and Link                           |
+|011 1 1000|**SSIM***   |**Set Single Interaction Mode**         |
+|101 1 1000|SVIM*       |Set Vector Interaction Mode             |
+|111 1 1000|SMIM*       |Set Multi Interaction Mode              |
 |000 1 0000|SLP         |Sleep (Kill core)                       |
 |010 1 0000|FENCE*      |Invalidates I.cache and retires D.cache |
 |100 1 0000|SDI         |Send Interruption                       |
-|110 1 0000|**JAL**     |**Jump and Link**                       |
-|001 1 0000|**STKR**    |**Stack Rotation**                      |
-|011 1 0000|SVIM*       |Set Vector Interaction Mode             |
-|101 1 0000|SMIM*       |Set Multi Interaction Mode              |
-|111 1 0000|RER         |Restore all Registers from memory       |
+|110 1 0000|RER         |Restore all Registers from memory       |
+|001 1 0000|OPMS*       |Operation Mode Split Precision          |
+|011 1 0000|OPMF*       |Operation Mode Fuse Precision           |
+|101 1 0000|OPMH*       |Operation Mode Swap Half                |
+|111 1 0000|MNG         |Management Mode                         |
 |001 0 0000|CSM         |Control Sequential Memory               |
 |011 0 0000|CI          |Control Interruption                    |
 |101 0 0000|CRS         |Control Rotation and Signal             |
@@ -149,7 +152,7 @@ Instructions under review:
 - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
 - INV: Invert all bits that are 0 to 1 and 1 to 0, currently there is no instruction to change the endianness of a register.
 - BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register, alternatively, this OP Code could be used for a instruction to change the endianness while BC replace SSIM and keeps the usual behaviour of skip one.
-- **JAL/STKR**: Trying to make a better place for it, STKR is under consideration to be replaced.
+- **STKE**: Due to its redundancy, Set Stack Element Active is under consideration to be replaced by Rotate Up/Down Upper/Lower Register Bank (RxxRB).
 
 ### Development:
 Currently there is a feeling of **missing** some **functionalities**, like:
@@ -175,9 +178,12 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|001 1 0000|**SSIM***   |**Set Single Interaction Mode**         |         |
+|000 1 1000|**RDLRB**   |**Rotate Down Lower Register Bank**     |Yes      |
+|100 1 1000|**RULRB**   |**Rotate Up Lower Register Bank**       |Yes      |
+|010 1 1000|**RDURB**   |**Rotate Down Upper Register Bank**     |Yes      |
+|110 1 1000|**RUURB**   |**Rotate Up Upper Register Bank**       |Yes      |
 |III I IIII|SPC         |Split Core                              |Yes      |
-|III I IIII|CSHD        |Control Shift Direction                 |Yes      |
+|III I IIII|CSHD        |Control Shift Direction                 |         |
 |FFF 1 1000|OPM         |Operation Mode                          |No       |
 |RRR 0 1000|**SMEM**    |**Swap Memory Address**                 |         |
 |RRR 1 1100|**JAL**     |**Jump and Link**                       |         |
