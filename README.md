@@ -4,8 +4,7 @@
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
-MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program counter register, 1 memory address register, 8 management registers and 16 general purpose registers that are equally divided into 4 registers bank while only two banks are active at a time (making 8 registers addressable), it's possible to switch which register bank is active through an operation (SRB). Since 8-bit is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
-> ~~PC/MEM_ADDR Register Size is under consideration, for now the idea is that it's at least 16-bit, even for an 8-bit implementation, in this case register bank 2 and 3 will swap the upper bits, while register bank 0 and 1 will swap the lower bits of MEM_ADDR during SMEM operation.~~
+MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program counter register, 8 management registers, 16 general purpose registers that are equally divided into 4 registers bank while only two banks are active at a time (making 8 registers addressable) and 1 memory stack address register that operates much like a register bank. Since 8-bit is too little to hold two full addresses for an 8-register architecture without compromising instruction size, the instruction will specify the Rd (register destiny) while Rs (register source) will be relative to it (when F=0 address will be Rs=Rd+4 while F=1 will be Rs=Rd+3).
 > With MEM_ADDR been replaced by MEM_STK, this makes possible for the address to utilize as many bits as desired.
 
 ### Characteristics:
@@ -49,11 +48,10 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	> The smaller size is under consideration to become 4-bits, this would make it friendlier to software BCD.
 - CPUID (8-bit mandatory):
 
-| Write Police* | Division* | Multiplication* | MIMD  | SIMD-M | SIMD-V | Flex Memory | Protected Memory | Operations (8/16/32-bit/Unknown) |
-|---------------|-----------|-----------------|-------|--------|--------|-------------|------------------|---------------------------------|
-| 1-bit         | 1-bit     | 1-bit           | 1-bit | 1-bit  | 1-bit  | 1-bit       | 1-bit            | 2-bit                           |
-
-> CPUID is under consideration to become a true CPUID where it would hold a CPU identifier instead of its capabilities.
+| Custom | MIMD  | SIMD-M | SIMD-V | Write Police | Protected Memory | Operations (8/16/32-bit/Unknown) |
+|--------|-------|--------|--------|--------------|------------------|----------------------------------|
+| 1-bit  | 1-bit | 1-bit  | 1-bit  | 1-bit        | 1-bit            | 2-bit                            |
+> **Custom** will replace lower bits for instead of a CPU capabilities, it becomes a true CPU ID that the running application will have to identify.
 - Split Core (MIMD):
 	- Core will start a new execution loop in parallel on NPC address as soon as NPC is filled with any value besides 0.
 - Vector Mode (SIMD-V):
@@ -85,7 +83,8 @@ MISA-I is an 8-bit instruction Two-Address architecture, it consist of 1 program
 	- F = 1: This will make the operator be operand + 3 (RRR + 3)
 	- If the instruction does not have a function bit 'F', it will operate solely on operand or assume F=0.
 - Sleep will stop at interruption signal, this can be achieved by an interruption pin or interruption timer.
-- *Flex Memory*: A small amount (planned 64/128/256 Bytes) of memory that can be used as a cache or as independent memory.
+- *Flex Memory*: A small amount (planned 64/128/256 Bytes) of memory that can be used as a cache or as independent memory, it will be located at the end of the addressable space and its size is what is left.
+  >*Flex Memory* can not be bigger than bigger than what a register can address, ex.: an 8-bit CPU implementation can have a 16-bit external address bus, but the max FM it can have is what 8-bit can address, since its located at the end of addressable space, the initial part of the address (most significant bit) would be filled with 1.
 - *FMA*: Allows the positioning of the flex memory address, any memory that exceeds the addressable limit can be used as a cache.
 - *Split Core* is a wild concept where the CPU will start operating 2 PC and executing two flows, the idea is if the CPU has Flex Memory, it could execute a sub-program entirely in it's Flex Memory while keeping working on the main program in the primary Thread.
 - *RST*: Will be used as an escape command to run the CPU in a new architecture (something like "CPU will reset if tryed to run unsupported mode"), but also can be used as a "memory flag" to know if the content in the region can be used RER.
@@ -119,9 +118,8 @@ The following table lists the architecture current instructions.
 |RRR 1 1100|SRSTK       |Swap Register with Stack lower bits     |
 |FF0 0 1000|SRB         |Swap Register Bank                      |
 |F01 0 1000|**SRBSTK**  |**Swap Register Bank with Stack**       |
-|011 0 1000|**RRSTK**   |**Rotate Stack to the Right**           |
-|111 0 1000|**RLSTK**   |**Rotate Stack to the Left**            |
-|FF0 1 1000|**STKE**    |**Set Stack Element Active**            |
+|D11 0 1000|**RSTK**    |**Rotate Stack**                        |
+|DB0 1 1000|**RRB**     |**Rotate Register Bank**                |
 |001 1 1000|JAL         |Jump and Link                           |
 |011 1 1000|**SSIM***   |**Set Single Interaction Mode**         |
 |101 1 1000|SVIM*       |Set Vector Interaction Mode             |
@@ -146,6 +144,7 @@ Instructions under review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
 - RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
+- **RSTK/RRB**: *'D'* refeers to direction: *'0'* to left/up and *'1'* to right/down. While *'B'* refeers to bank: *'0'* to lower active Rb(r0-r3/r8-r11) and *'1'* to higher active Rb (r4-r7/r12-r15). More information can be found on *'Development'* section.
 - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter *"8-bit compact mode"* will have a way to stays true to its cache.
 - *CFP* is an emergency mesure to have some possibility of float point operations, this certanly is not required for an 8/16-bit CPU, but this instruction is also aiming at a future evolution running on *compact mode* that would need float point.
 - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind, currently they were replaced with MUL/DIV instructions, the idea behind this decision is, even though an 8-bit cpu (or first gen 16-bit) does not need hardware multiplication, a more powerful CPU (an i486 competitor) would not be able to be competitive because of a design flaw (no OP code left), in order to keep the architecture 'future' proof, two highly expensive and valuable OP Codes had to be sacrificed, as a bonus now it's possible to use MISA-I as a compact mode for a future MISA-II without a lot of drawback.
@@ -156,13 +155,14 @@ Instructions under review:
 
 ### Development:
 Currently there is a feeling of **missing** some **functionalities**, like:
-- Become a true MISC architecture: Currently the instruction structure are much more RISC like, and some instructions can even been said to be CISC, here are the main culprits:
+- Become a true MISC architecture: usability takes priority over philosophy, currently the instruction structure are much more RISC like, and some instructions can even been said to be CISC, here are the main culprits:
 	- LI: will read the next instruction (8-bit data mode) or even next two instructions (16-bit data mode) as immediate value to store on register, it's not complex, but can be argued to have a variable length instruction size, even so this instruction is here to stay, because 8-bit does not let left much space for an immediate, without it generating an address to read or store a value would became painfully taxing on the runtime.
 	- Changing CPU behavior is something to be debated, as if already existing instructions will have a different behavior some may count then as new instructions, or as a complex instruction, or both, this would lead to a violation of philosophy, none less this one is also here to stay, the opcode saved and flexibility added is what gives hope of this ISA be competitive.
 	- RER: Problably a CISC instructions, It's great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, if this instruction did not exist, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define at high level a "throw away" register that would only be usable when interruption is set off.
 	- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used similarly), all this flexibility for the small price of an almost throw away instruction space can not be classified as anything other than a bargain, this is why it's here and probably to stay.
 	- Protected Memory: MISC abolishes MMU, even so I believe it's important to have a way to protect itself from malicious users. I'm not looking at a full MMU, I believe a MPU would be enough, for now I'm looking at RA (Relative Address) and FL (Field Length) of CDC Architecture.
-	- **SOLUTIONS**: RER/RERO, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way, MISA-I can be kept clean and MISC conformant if desirable (usability will take priority over philosophy).
+	- The pure cheat **RSTK/RRB**: Yeap, it's cheating, I needed a way to keep mandatory instructions count below 32 to fill at least one requirement of a MISC architecture, there was no other way, as stated before, usability would take full priority over philosophy, with the current architectural limitation of addressable registers, the possibility of a register bank rotation makes it much easier for registers interactions solving one of the most pressuing issues of the architecture. But even so, unlike **RSTK** (stack rotation is a must, there would be no reason to call it a stack if it could not even rotate), **RRB** is not set in stone, a similar could be achived by swaping register bank with stack, then rotating the stack and swaping it back, **RRB** only exist because of a power consumption concern, but if it end up been not frequently called while requiring a complex circuitry for implementation, it will be removed without a second tough.
+	- **SOLUTIONS**: RER/RERO, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way, MISA-I can be kept clean and MISC conformant if desirable.
 - MEMCPY: With the 'Flex Memory' concept, it would help to have an instruction to copy directly the memory without recurring to LW/SW loop.
 - BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: A dedicated register for flags and used by bit operations.
@@ -178,10 +178,13 @@ There are some instructions that was once in the isa, but currently were removed
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|000 1 1000|**RDLRB**   |**Rotate Down Lower Register Bank**     |Yes      |
-|100 1 1000|**RULRB**   |**Rotate Up Lower Register Bank**       |Yes      |
-|010 1 1000|**RDURB**   |**Rotate Down Upper Register Bank**     |Yes      |
-|110 1 1000|**RUURB**   |**Rotate Up Upper Register Bank**       |Yes      |
+|011 0 1000|**RRSTK**   |**Rotate Stack to the Right**           |;D       |
+|111 0 1000|**RLSTK**   |**Rotate Stack to the Left**            |;D       |
+|FF0 1 1000|**STKE**    |**Set Stack Element Active**            |         |
+|000 1 1000|**RDLRB**   |**Rotate Down Lower Register Bank**     |;D       |
+|100 1 1000|**RULRB**   |**Rotate Up Lower Register Bank**       |;D       |
+|010 1 1000|**RDURB**   |**Rotate Down Upper Register Bank**     |;D       |
+|110 1 1000|**RUURB**   |**Rotate Up Upper Register Bank**       |;D       |
 |III I IIII|SPC         |Split Core                              |Yes      |
 |III I IIII|CSHD        |Control Shift Direction                 |         |
 |FFF 1 1000|OPM         |Operation Mode                          |No       |
