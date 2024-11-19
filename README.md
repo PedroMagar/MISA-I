@@ -111,17 +111,17 @@ The following table lists the architecture current instructions.
 |RRR 0 0110|LI          |Load Immediate from instruction         |
 |RRR 1 0110|LW          |Load Word                               |
 |RRR 0 1110|SW          |Store Word                              |
-|RRR 1 1110|BC          |Branch if Carry                         |
+|RRR 1 1110|**MEMCPY**  |**Memory Copy**                         |
 |RRR 0 0100|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
 |RRR 1 1100|SRSTK       |Swap Register with Stack lower bits     |
 |FF0 0 1000|SRB         |Swap Register Bank                      |
-|F01 0 1000|**SRBSTK**  |**Swap Register Bank with Stack**       |
-|D11 0 1000|**RSTK**    |**Rotate Stack**                        |
+|F01 0 1000|SRBSTK      |Swap Register Bank with Stack           |
+|D11 0 1000|RSTK        |Rotate Stack                            |
 |DB0 1 1000|**RRB**     |**Rotate Register Bank**                |
 |001 1 1000|JAL         |Jump and Link                           |
-|011 1 1000|**SSIM***   |**Set Single Interaction Mode**         |
+|011 1 1000|**BC**      |**Branch if Carry**                     |
 |101 1 1000|SVIM*       |Set Vector Interaction Mode             |
 |111 1 1000|SMIM*       |Set Multi Interaction Mode              |
 |000 1 0000|SLP         |Sleep (Kill core)                       |
@@ -143,14 +143,15 @@ The following table lists the architecture current instructions.
 Instructions under review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
-- RST: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
+- **RST**: Why a reset instruction? Its main focus would be to change the CPU operation mode to a new version (16-bit), if you try to change and the CPU does not support, it would simply reset, also could be used as a memory flag for XJ to know that the memory region to be restored is a valid one.
 - **RSTK/RRB**: *'D'* refeers to direction: *'0'* to left/up and *'1'* to right/down. While *'B'* refeers to bank: *'0'* to lower active Rb(r0-r3/r8-r11) and *'1'* to higher active Rb (r4-r7/r12-r15). More information can be found on *'Development'* section.
 - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter *"8-bit compact mode"* will have a way to stays true to its cache.
 - *CFP* is an emergency mesure to have some possibility of float point operations, this certanly is not required for an 8/16-bit CPU, but this instruction is also aiming at a future evolution running on *compact mode* that would need float point.
 - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind, currently they were replaced with MUL/DIV instructions, the idea behind this decision is, even though an 8-bit cpu (or first gen 16-bit) does not need hardware multiplication, a more powerful CPU (an i486 competitor) would not be able to be competitive because of a design flaw (no OP code left), in order to keep the architecture 'future' proof, two highly expensive and valuable OP Codes had to be sacrificed, as a bonus now it's possible to use MISA-I as a compact mode for a future MISA-II without a lot of drawback.
 - SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
 - INV: Invert all bits that are 0 to 1 and 1 to 0, currently there is no instruction to change the endianness of a register.
-- BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register, alternatively, this OP Code could be used for a instruction to change the endianness while BC replace SSIM and keeps the usual behaviour of skip one.
+- ~~BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register, alternatively, this OP Code could be used for a instruction to change the endianness while BC replace SSIM and keeps the usual behaviour of skip one.~~
+- MEMCPY: Filling space left by BC, may be replaced by RNG or other instruction.
 - **STKE**: Due to its redundancy, Set Stack Element Active is under consideration to be replaced by Rotate Up/Down Upper/Lower Register Bank (RxxRB).
 
 ### Development:
@@ -166,25 +167,27 @@ Currently there is a feeling of **missing** some **functionalities**, like:
 - MEMCPY: With the 'Flex Memory' concept, it would help to have an instruction to copy directly the memory without recurring to LW/SW loop.
 - BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
 - Flags: A dedicated register for flags and used by bit operations.
-- JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.
+- ~~JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.~~ (unified jump behaviour)
 - Cache and TSO (Total Store Order): Let's start simple, 128 Bytes of storage on a 6T Flip-Flop would result in 6144 Transistors, a MOS 6502 has 3500, Intel 8080 has 6000 and Z80 has 8500 ... For a small 8-bit CPU implementation, cache is useless or at least on the best of the best a really really really HUGE burden, BUT, if low transistor count (small size) is not one of the requirements, and a wide input design (like 4-way decode) is what you are doing, a small cache can be desired, and when there is a cache, there is a possibility of memory mismatch with other devices on the bus, to prevent this, sync could be done by setting the CPU in write through mode and using FENCE instruction in sensible areas.
 
 There are also some operations that have some **high overhead** due to the architecture:
-- Branch between values may require a SUB or ADD operation before comparison, due to the destructive nature of the architecture, if the original value of comparison cannot be lost there will be an operation overhead to copy the main value to an available register before the Branch, if there is no available register at the moment... Well... glhf...
-- CP/MV: Currently the operation to Copy was removed to resolve a major oversight of not having the 'Inverse' operation, as a bonus the architecture also received a branch if carry operation, the downside is since the architecture does not have a way to directly access all register, when the data needs to interact with two register that doesn't have a link betwen then, the data has to be moved/copied, now this can lead to a major overhead as currently the only way to copy is to first clear a register then add the value to be moved/copied to it, so the data in the other register may need to be moved or even worse, stored. This may look like a design flaw but it's an architectural decision (won't say a good one), is not all data that needs to communicate with every register and current design allow enough flexibility to be reasonably efficient.
+- Branch between values may require a SUB or ADD operation before comparison, due to the destructive nature of the architecture, if the original value of comparison cannot be lost there will be an overhead to copy the main value to an available register before the Branch, if there is no available register at the moment... Well... glhf...
+- ~~CP/MV: Currently the operation to Copy was removed to resolve a major oversight of not having the 'Inverse' operation, as a bonus the architecture also received a branch if carry operation, the downside is since the architecture does not have a way to directly access all register, when the data needs to interact with two register that doesn't have a link betwen then, the data has to be moved/copied, now this can lead to a major overhead as currently the only way to copy is to first clear a register then add the value to be moved/copied to it, so the data in the other register may need to be moved or even worse, stored. This may look like a design flaw but it's an architectural decision (won't say a good one), is not all data that needs to communicate with every register and current design allow enough flexibility to be reasonably efficient.~~ (resolved with RRB/RSTK)
 
 ### Honorable Mentions
 There are some instructions that was once in the isa, but currently were removed due to conflict/priority compared to the current design, but there are also others that are just waiting to be in:
 
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
-|011 0 1000|**RRSTK**   |**Rotate Stack to the Right**           |;D       |
-|111 0 1000|**RLSTK**   |**Rotate Stack to the Left**            |;D       |
-|FF0 1 1000|**STKE**    |**Set Stack Element Active**            |         |
-|000 1 1000|**RDLRB**   |**Rotate Down Lower Register Bank**     |;D       |
-|100 1 1000|**RULRB**   |**Rotate Up Lower Register Bank**       |;D       |
-|010 1 1000|**RDURB**   |**Rotate Down Upper Register Bank**     |;D       |
-|110 1 1000|**RUURB**   |**Rotate Up Upper Register Bank**       |;D       |
+|RRR 1 1110|**BSWAP***  |**Byte Swap**                           |         |
+|011 0 1000|RRSTK       |Rotate Stack to the Right               |;D       |
+|111 0 1000|RLSTK       |Rotate Stack to the Left                |;D       |
+|FF0 1 1000|**STKE**    |**Set Stack Element Active**            |YES      |
+|000 1 1000|RDLRB       |Rotate Down Lower Register Bank         |;D       |
+|100 1 1000|RULRB       |Rotate Up Lower Register Bank           |;D       |
+|010 1 1000|RDURB       |Rotate Down Upper Register Bank         |;D       |
+|110 1 1000|RUURB       |Rotate Up Upper Register Bank           |;D       |
+|011 1 1000|**SSIM***   |**Set Single Interaction Mode**         |-,-      |
 |III I IIII|SPC         |Split Core                              |Yes      |
 |III I IIII|CSHD        |Control Shift Direction                 |         |
 |FFF 1 1000|OPM         |Operation Mode                          |No       |
@@ -199,8 +202,7 @@ There are some instructions that was once in the isa, but currently were removed
 |RRR F IIII|CBN         |Control Branch Negate                   |         |
 |RRR 0 0001|CP          |Copy                                    |         |
 |RRR 0 0001|MV          |Move                                    |         |
-|RRR 0 0001|MEMCPY      |Memory Copy                             |Yes      |
-|RRR I IIII|RNG         |Generate Random Value                   |Yes      |
+|RRR I IIII|**RNG**     |Generate Random Value                   |Yes      |
 |110 0 0000|RERO*       |Restore Operation Mode Registers        |         |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
