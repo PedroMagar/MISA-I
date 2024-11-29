@@ -111,7 +111,7 @@ The following table lists the architecture current instructions.
 |RRR 0 0110|LI          |Load Immediate from instruction         |
 |RRR 1 0110|LW          |Load Word                               |
 |RRR 0 1110|SW          |Store Word                              |
-|RRR 1 1110|**MEMCPY**  |**Memory Copy**                         |
+|RRR 1 1110|**MEMCPY*** |**Memory Copy**                         |
 |RRR 0 0100|BEQz        |Branch if Equal to Zero                 |
 |RRR 1 0100|BNEz        |Branch if Not Equal to Zero             |
 |RRR 0 1100|APC         |Add to Program Counter                  |
@@ -148,11 +148,11 @@ Instructions under review:
 - FENCE is something good to have, if someone tried a 1000-core cpu, having a way to sync cache can be useful, also a future 16/32-bit evolution that could enter *"8-bit compact mode"* will have a way to stays true to its cache.
 - *CFP* is an emergency mesure to have some possibility of float point operations, this certanly is not required for an 8/16-bit CPU, but this instruction is also aiming at a future evolution running on *compact mode* that would need float point.
 - BEQ/BGE: MISA initially was designed with BEQ/BGE in mind, currently they were replaced with MUL/DIV instructions, the idea behind this decision is, even though an 8-bit cpu (or first gen 16-bit) does not need hardware multiplication, a more powerful CPU (an i486 competitor) would not be able to be competitive because of a design flaw (no OP code left), in order to keep the architecture 'future' proof, two highly expensive and valuable OP Codes had to be sacrificed, as a bonus now it's possible to use MISA-I as a compact mode for a future MISA-II without a lot of drawback.
-- SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would free a register to hold 'CPU Mode'.
+- SPC: 'Split Core' concept can currently be achieved by populating NPC with a value, this feature is likely to be removed, doing so would release a management register to hold 'CPU Mode'.
 - INV: Invert all bits that are 0 to 1 and 1 to 0, currently there is no instruction to change the endianness of a register.
 - ~~BC: 'Branch if Carry' becomes the strongest branch, since instead of the regular jump 2, it can jump to the address on the register, alternatively, this OP Code could be used for a instruction to change the endianness while BC replace SSIM and keeps the usual behaviour of skip one.~~
-- MEMCPY: Filling space left by BC, may be replaced by RNG or other instruction.
-- **STKE**: Due to its redundancy, Set Stack Element Active is under consideration to be replaced by Rotate Up/Down Upper/Lower Register Bank (RxxRB).
+- **MEMCPY**: Filling space left by BC, **actively looking for a better instruction to replace it**.
+- ~~**STKE**: Due to its redundancy, Set Stack Element Active is under consideration to be replaced by Rotate Up/Down Upper/Lower Register Bank (RxxRB).~~
 
 ### Development:
 Currently there is a feeling of **missing** some **functionalities**, like:
@@ -162,10 +162,10 @@ Currently there is a feeling of **missing** some **functionalities**, like:
 	- RER: Problably a CISC instructions, It's great for preemptive multitasking, based on XJ from CDC 7600, this function would work perfectly to store the current task when an interrupt is detected or when the OS is doing a context switch, if this instruction did not exist, as the architecture doesn't have a JI (Jump Immediate) instruction, it would be impossible to restore all the register when returning to the process because the last register to be restored would have to contain the PC address of when the execution was stopped, this would imply to define at high level a "throw away" register that would only be usable when interruption is set off.
 	- Send Interruption: Interruption can be interpreted as a one bit signal, it would likely violate the RISC/MISC philosophy of only dealing with memory, but its benefits of working as a mean for multi-core synchronization, bank switch and others tasks cannot be underestimated (even if the higher bits of the address space can be used similarly), all this flexibility for the small price of an almost throw away instruction space can not be classified as anything other than a bargain, this is why it's here and probably to stay.
 	- Protected Memory: MISC abolishes MMU, even so I believe it's important to have a way to protect itself from malicious users. I'm not looking at a full MMU, I believe a MPU would be enough, for now I'm looking at RA (Relative Address) and FL (Field Length) of CDC Architecture.
-	- The pure cheat **RSTK/RRB**: Yeap, it's cheating, I needed a way to keep mandatory instructions count below 32 to fill at least one requirement of a MISC architecture, there was no other way, as stated before, usability would take full priority over philosophy, with the current architectural limitation of addressable registers, the possibility of a register bank rotation makes it much easier for registers interactions solving one of the most pressuing issues of the architecture. But even so, unlike **RSTK** (stack rotation is a must, there would be no reason to call it a stack if it could not even rotate), **RRB** is not set in stone, a similar could be achived by swaping register bank with stack, then rotating the stack and swaping it back, **RRB** only exist because of a power consumption concern, but if it end up been not frequently called while requiring a complex circuitry for implementation, it will be removed without a second tough.
+	- **RSTK/RRB**, the pure cheat: Yeap, it's cheating, I needed a way to keep mandatory instructions count below 32 to fill at least one requirement of a MISC architecture, there was no other way, as stated before, usability would take full priority over philosophy, with the current architectural limitation of addressable registers, the possibility of a register bank rotation makes it much easier for registers interactions, solving one of the most pressuing issues of the architecture. But even so, **RRB** is not set in stone, the same result could be achived by swaping register bank with stack, then rotating the stack and swaping it back, **RRB** only exist because of a power consumption concern, but if it end up been not frequently called while requiring a complex circuitry for implementation, it will be removed without a second tough. Currently analizing if a byte swap (BSWAP) like behaviour or Set Stack Element Active (STKE) would gives a better result.
 	- **SOLUTIONS**: RER/RERO, Protected Memory, Fence and others non essentials behavior probably will be defined as non-obligatory or even postergated to MISA-II, in this way, MISA-I can be kept clean and MISC conformant if desirable.
-- MEMCPY: With the 'Flex Memory' concept, it would help to have an instruction to copy directly the memory without recurring to LW/SW loop.
-- BIT Operations: Reading (for a branch) and writing a single bit of a register (flag).
+- ~~MEMCPY: With the 'Flex Memory' concept, it would help to have an instruction to copy directly the memory without recurring to LW/SW loop.~~ (currently implemented)
+- BIT Operations: Currently there is no bit operations, like reading a bit from a register (for a branch) and writing a single bit on a register (flag).
 - Flags: A dedicated register for flags and used by bit operations.
 - ~~JAL: Jump and Link could be not destructive, in this case it would be possible to swap with SMEM and change SMEM behavior to be based on register file location.~~ (unified jump behaviour)
 - Cache and TSO (Total Store Order): Let's start simple, 128 Bytes of storage on a 6T Flip-Flop would result in 6144 Transistors, a MOS 6502 has 3500, Intel 8080 has 6000 and Z80 has 8500 ... For a small 8-bit CPU implementation, cache is useless or at least on the best of the best a really really really HUGE burden, BUT, if low transistor count (small size) is not one of the requirements, and a wide input design (like 4-way decode) is what you are doing, a small cache can be desired, and when there is a cache, there is a possibility of memory mismatch with other devices on the bus, to prevent this, sync could be done by setting the CPU in write through mode and using FENCE instruction in sensible areas.
@@ -180,6 +180,7 @@ There are some instructions that was once in the isa, but currently were removed
 |Binary    |Instruction |Description                             |Candidate|
 |----------|------------|----------------------------------------|---------|
 |RRR 1 1110|**BSWAP***  |**Byte Swap**                           |         |
+|RRR I IIII|**RNG**     |**Generate Random Value**               |Yes      |
 |011 0 1000|RRSTK       |Rotate Stack to the Right               |;D       |
 |111 0 1000|RLSTK       |Rotate Stack to the Left                |;D       |
 |FF0 1 1000|**STKE**    |**Set Stack Element Active**            |YES      |
@@ -191,8 +192,8 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|SPC         |Split Core                              |Yes      |
 |III I IIII|CSHD        |Control Shift Direction                 |         |
 |FFF 1 1000|OPM         |Operation Mode                          |No       |
-|RRR 0 1000|**SMEM**    |**Swap Memory Address**                 |         |
-|RRR 1 1100|**JAL**     |**Jump and Link**                       |         |
+|RRR 0 1000|SMEM        |Swap Memory Address                     |         |
+|RRR 1 1100|JALR        |Jump and Link from register             |         |
 |RRR F 0011|SHL         |Shift Left                              |         |
 |RRR F 1011|SHR         |Shift Right                             |         |
 |RRR 0 0110|ADDC        |ADD Carry                               |         |
@@ -202,7 +203,6 @@ There are some instructions that was once in the isa, but currently were removed
 |RRR F IIII|CBN         |Control Branch Negate                   |         |
 |RRR 0 0001|CP          |Copy                                    |         |
 |RRR 0 0001|MV          |Move                                    |         |
-|RRR I IIII|**RNG**     |Generate Random Value                   |Yes      |
 |110 0 0000|RERO*       |Restore Operation Mode Registers        |         |
 |110 0 0000|BKPR        |Restore Backup from memory              |         |
 |110 0 0000|FENCE.I     |Invalidates instruction cache           |         |
@@ -215,8 +215,8 @@ There are some instructions that was once in the isa, but currently were removed
 |III I IIII|CR          |Control Rotation                        |No       |
 |III I IIII|CS          |Control Signal                          |No       |
 |III I IIII|CC          |Control Carry                           |No       |
-|III I IIII|CIO         |Control Interruption on Overflow        |Yes      |
-|III I IIII|CPUID       |Read CPU capabilities                   |Yes      |
+|III I IIII|CIO         |Control Interruption on Overflow        |         |
+|III I IIII|CPUID       |Read CPU capabilities                   |         |
 
 > **Bold**: Newly added.
 
@@ -256,4 +256,4 @@ done:
     # Result is in x3 (
 ```
 
-Even though RISC-V has less instruction, it's using 16-bit instruction, so its 7 instructions would translate to 14-Bytes of storage, while on MISA-I with its 8-bit instructions is using 10-Bytes for its 10 instructions... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective (even a MISA with instruction fusion would have its limitations) is hard to compete. Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 4-byte shorter!
+Even though RISC-V has less instruction, it's at best using 16-bit instruction, so its 7 instructions would translate to 14-Bytes of storage, while on MISA-I with its 8-bit instructions is using 10-Bytes for its 10 instructions... Of course, this pseudo advantage can be denied if taken in consideration that as MISA uses more instructions for preparation (clearing registers and setting values), and also the major performance efficiency advantage that RISC-V does have as its needs to process less instruction making its clock more effective is hard to compete (even a MISA with instruction fusion would have its limitations). Anyway, a win is a win, let's take anything that is possible! In a multiplication loop, MISA-I is 4-byte shorter!
